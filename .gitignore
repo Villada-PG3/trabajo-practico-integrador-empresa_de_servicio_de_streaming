@@ -1,0 +1,69 @@
+# ==========================================
+# Django Core & Database Configs
+# ==========================================
+*.sqlite3
+*.log
+local_settings.py
+db.sqlite3-journal
+
+# ==========================================
+# Python Compiled Artifacts
+# ==========================================
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+*.obj
+
+# ==========================================
+# Environments & Packages
+# ==========================================
+.env
+.venv
+env/
+venv/
+ENV/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ==========================================
+# Media & Static Files
+# ==========================================
+# Media contains files uploaded by users. Never track them in production.
+media/
+# Only ignore static/ if it is your collected static files directory.
+static/
+staticfiles/
+
+# ==========================================
+# IDEs and Editors
+# ==========================================
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# ==========================================
+# Testing & Code Coverage
+# ==========================================
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.pytest_cache/
+
+# ==========================================
+# OS Generated Files
+# ==========================================
+.DS_Store
+.DS_Store?
+ehthumbs.db
+Icon?
+Thumbs.db
