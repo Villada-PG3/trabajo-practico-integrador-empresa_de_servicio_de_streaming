@@ -1,0 +1,110 @@
+%%¡¡¡IMPORTANTE!!! NO ESTA TERMINADO, FALTA TERMINAR
+erDiagram
+    
+    Suscripcion {
+        int id PK
+        int id_Usuario FK
+        int id_Plan FK
+        date fecha_incripcion
+        date fecha_cancelacion
+        bool habilitado
+
+    }
+
+    Pais{
+        int id PK
+        str nombre
+    }
+
+    Usuario {
+        int id PK
+        str nombre
+        str apellido
+        str email
+        str telefono %%OPC Contiene caracteristica
+        str clave %%cifrado
+        int id_Pais FK
+
+        %%Datos Tarjeta
+        int id_Marca_tarjeta FK
+        int numero_tarjeta
+        str nombre_titular
+        date fecha_vencimiento
+    }
+
+    Plan {
+        int id PK
+        str nombre
+    }
+
+    Costo_plan{
+        int id PK
+        int id_Plan FK
+        int costo_mensual
+    }
+
+    Plan_calidad{
+        int id PK
+        int id_Plan FK
+        int id_Calidad
+    }
+
+    Titulo {
+        int id PK
+        str nombre
+        str descripcion
+        int id_Tipo_titulo FK
+
+    }
+
+    Tipo_titulo{
+        int id PK
+        str nombre
+        str descripcion
+    }
+
+    Registro{
+        int id PK
+        int id_Suscripcion FK
+
+        %%cada inicio de sesion genera un token unico que indica donde se ha iniciado sesion, este mismo se almacena en las cookies del navegador para luego poder acceder nuevamente sin necesidad de loguearse
+        str token_dispositivo 
+        bool estado_token %%indica si el token es valido aún
+        str sistema_operativo
+        date hora_conexion
+
+    }
+
+    Calidad_contenido{
+        int id PK
+        int id_Contenido FK
+        int id_Calidad FK
+        
+    }
+
+    Calidad{
+        int id PK
+        str nombre
+        str descripcion
+    }
+
+    Cobro{
+        int id PK
+        int id_Suscripcion FK
+        date fecha_cobro
+        int id_Estado FK
+        float monto
+    }
+
+    Estado{
+        int id PK
+        str nombre
+        str descripcion
+    }
+
+    Marca_tarjeta{
+        int id PK
+        str nombre
+        int numero_asignado
+        str descripcion
+    }
