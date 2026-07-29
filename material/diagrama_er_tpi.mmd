@@ -1,85 +1,16 @@
-%%¡¡¡IMPORTANTE!!! NO ESTA TERMINADO, FALTA TERMINAR
 erDiagram
-    
-    Suscripcion {
-        int id PK
-        int id_Usuario FK
-        int id_Plan FK
-        date fecha_incripcion
-        date fecha_cancelacion
-        bool habilitado
-
-    }
 
     Pais{
         int id PK
         str nombre
     }
 
-    Usuario {
-        int id PK
-        str nombre
-        str apellido
-        str email
-        str telefono %%OPC Contiene caracteristica
-        str clave %%cifrado
-        int id_Pais FK
-
-        %%Datos Tarjeta
-        int id_Marca_tarjeta FK
-        int numero_tarjeta
-        str nombre_titular
-        date fecha_vencimiento
-    }
-
     Plan {
         int id PK
         str nombre
-    }
-
-    Costo_plan{
-        int id PK
-        int id_Plan FK
-        int costo_mensual
-    }
-
-    Plan_calidad{
-        int id PK
-        int id_Plan FK
-        int id_Calidad
-    }
-
-    Titulo {
-        int id PK
-        str nombre
         str descripcion
-        int id_Tipo_titulo FK
-
-    }
-
-    Tipo_titulo{
-        int id PK
-        str nombre
-        str descripcion
-    }
-
-    Registro{
-        int id PK
-        int id_Suscripcion FK
-
-        %%cada inicio de sesion genera un token unico que indica donde se ha iniciado sesion, este mismo se almacena en las cookies del navegador para luego poder acceder nuevamente sin necesidad de loguearse
-        str token_dispositivo 
-        bool estado_token %%indica si el token es valido aún
-        str sistema_operativo
-        date hora_conexion
-
-    }
-
-    Calidad_contenido{
-        int id PK
-        int id_Contenido FK
-        int id_Calidad FK
-        
+        float precio
+        int cantidad_dispositivos
     }
 
     Calidad{
@@ -88,19 +19,62 @@ erDiagram
         str descripcion
     }
 
-    Cobro{
+    Plan_calidad{
         int id PK
-        int id_Suscripcion FK
-        date fecha_cobro
-        int id_Estado FK
-        float monto
+        int id_Plan FK
+        int id_Calidad FK
     }
-
-    Estado{
+    
+    Tipo_titulo{
         int id PK
         str nombre
         str descripcion
     }
+
+    Titulo {
+        int id PK
+        str nombre_original
+        str descripcion_original
+        int id_Tipo_titulo FK
+        int id_Pais FK
+    }
+
+    Idioma{
+        int id PK
+        str nombre
+        str descripcion
+    }
+
+    Idioma_titulo{
+        int id PK
+        str nombre
+        str descripcion
+        int id_Idioma FK
+        int id_Titulo FK
+    }
+
+    Contenido{
+        int id PK
+        str nombre
+        str descripcion
+        int seccion
+        int orden 
+        int id_Titulo FK
+    }
+
+    Idioma_contenido{
+        int id PK
+        int id_Idioma FK
+        int id_Contenido FK
+    }
+
+    Calidad_idioma_contenido{
+        int id PK
+        int id_Idioma_contenido FK
+        int id_Calidad FK
+        blob archivo
+    }
+
 
     Marca_tarjeta{
         int id PK
@@ -108,3 +82,94 @@ erDiagram
         int numero_asignado
         str descripcion
     }
+
+    Metodo_pago {
+        int id PK
+        str nombre
+        str descripcion
+    }
+
+    Tarjeta {
+        int id PK
+        str numero
+        str nombre_titular
+        date fecha_vencimiento
+        int id_Marca_tarjeta FK
+        int id_Metodo_pago FK
+        bool habilitado
+    }
+
+    Usuario {
+        int id PK
+        str nombre
+        str apellido
+        str email
+        str telefono 
+        %%OPC Contiene caracteristica
+        str clave 
+        %%cifrado
+        int id_Pais FK
+        int id_Idioma FK
+        int id_Tarjeta FK
+    
+    }
+
+    Registro{
+        int id PK
+        int id_Usuario FK
+        %%cada inicio de sesion genera un token unico que indica donde se ha iniciado sesion, este mismo se almacena en las cookies del navegador para luego poder acceder nuevamente sin necesidad de loguearse
+        str token_dispositivo 
+        %%indica si el token es valido aún
+        str sistema_operativo
+        date hora_conexion
+        bool estado_sesion
+    }
+
+    Suscripcion {
+        int id PK
+        int id_Usuario FK
+        int id_Plan FK
+        date fecha_incripcion
+        date fecha_cancelacion
+        bool habilitado
+    }
+
+    Estado_cobro{
+        int id PK
+        str nombre
+        str descripcion
+    }
+
+    Cobro{
+        int id PK
+        int num_factura
+        int id_Suscripcion FK
+        date fecha_cobro
+        int id_Estado FK
+        int id_Tarjeta FK 
+        int numero_autorizacion
+        %%id_tarjeta se saca de suscrpcion a la hora del cobro, y luego se almacena por historial
+        float monto
+    }
+
+
+    Tipo_titulo ||--o{ Titulo: ""
+    Usuario ||--o{ Suscripcion: ""
+    Pais ||--o{ Usuario: ""
+    Pais ||--o{ Titulo: ""
+    Plan_calidad }o--|| Plan: ""
+    Plan_calidad }o--|| Calidad: ""
+    Registro }o--|| Usuario: ""
+    Titulo ||--|{ Contenido: ""
+    Cobro }o--|| Suscripcion: ""
+    Suscripcion }o--|| Plan: ""
+    Idioma ||--o{ Idioma_titulo: ""
+    Titulo ||--o{ Idioma_titulo: ""
+    Contenido ||--o{ Idioma_contenido: ""
+    Idioma ||--o{ Idioma_contenido: ""
+    Idioma_contenido ||--o{ Calidad_idioma_contenido: ""
+    Calidad ||--o{ Calidad_idioma_contenido: ""
+    Marca_tarjeta ||--o{ Tarjeta: ""
+    Metodo_pago ||--o{ Tarjeta: ""
+    Tarjeta ||--o{ Usuario: ""
+    Estado_cobro ||--o{ Cobro: ""
