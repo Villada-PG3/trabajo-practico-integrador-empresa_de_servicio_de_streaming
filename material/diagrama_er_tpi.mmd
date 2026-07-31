@@ -39,6 +39,45 @@ erDiagram
         int id_Pais FK
     }
 
+    Elenco {
+        int id PK
+        str nombre
+        str apellido
+        date fecha_nacimiento
+        str descripcion
+
+    }
+
+    Rol {
+        int id PK
+        str nombre
+        str descripcion
+    }
+
+    Rol_elenco {
+        int id PK
+        int id_Rol FK
+        int id_Elenco FK
+    }
+    
+    Titulo_rol_elenco {
+        int id PK
+        int id_Rol_elenco FK
+        int id_Titulo FK
+    }
+
+    Categoria {
+        int id PK
+        str nombre
+        str descripcion
+    }
+    
+    Titulo_categoria {
+        int id PK
+        int id_Titulo FK
+        int id_Categoria FK
+    }
+
     Idioma{
         int id PK
         str nombre
@@ -62,6 +101,49 @@ erDiagram
         int id_Titulo FK
     }
 
+    Imagen {
+        int id PK
+        int id_Titulo FK
+        blob imagen
+        str personaje
+
+    }
+    
+    Tipo_perfil {
+        int id PK
+        str nombre
+        int edad_maxima
+    }
+
+    Perfil {
+        int id PK
+        str nombre
+        int id_Imagen FK
+        int id_Tipo_perfil FK
+    }
+
+    Calificacion {
+        int id PK
+        str nombre
+        float porcentaje_gusto
+    }
+
+    Perfil_titulo {
+        int id PK
+        int id_Perfil FK
+        int id_Titulo FK
+        int id_Calificacion FK
+        bool por_ver
+    }
+
+    Perfil_contenido {
+        int id PK
+        int id_Perfil FK
+        int id_Contenido FK
+        int segundos_vistos
+        date ultima_visualizacion
+    }
+    
     Idioma_contenido{
         int id PK
         int id_Idioma FK
@@ -74,7 +156,6 @@ erDiagram
         int id_Calidad FK
         blob archivo
     }
-
 
     Marca_tarjeta{
         int id PK
@@ -145,31 +226,45 @@ erDiagram
         int num_factura
         int id_Suscripcion FK
         date fecha_cobro
-        int id_Estado FK
+        int id_Estado_cobro FK
         int id_Tarjeta FK 
         int numero_autorizacion
         %%id_tarjeta se saca de suscrpcion a la hora del cobro, y luego se almacena por historial
         float monto
     }
 
-
+    Calidad ||--o{ Plan_calidad: ""
+    Titulo ||--o{ Perfil_titulo: ""
+    Calificacion ||--o{ Perfil_titulo:""
+    Perfil ||--o{ Perfil_contenido:""
+    Plan_calidad }o--||Plan: ""
+    Titulo_rol_elenco }o--|| Titulo: ""
+    Titulo_categoria }o--|| Titulo: "" 
     Tipo_titulo ||--o{ Titulo: ""
-    Usuario ||--o{ Suscripcion: ""
-    Pais ||--o{ Usuario: ""
-    Pais ||--o{ Titulo: ""
-    Plan_calidad }o--|| Plan: ""
-    Plan_calidad }o--|| Calidad: ""
-    Registro }o--|| Usuario: ""
-    Titulo ||--|{ Contenido: ""
-    Cobro }o--|| Suscripcion: ""
-    Suscripcion }o--|| Plan: ""
-    Idioma ||--o{ Idioma_titulo: ""
+    Pais }o--|| Titulo: ""
+    Titulo ||--o{ Imagen: ""
+    Titulo ||--o{ Contenido: ""
+    Contenido ||--o{ Perfil_contenido:""
+    Perfil ||--o{ Perfil_titulo:""
+    Contenido ||--o{ Idioma_contenido:""
+    Elenco ||--o{ Rol_elenco: ""
+    Rol ||--o{ Rol_elenco: ""
+    Rol_elenco ||--o{ Titulo_rol_elenco: ""
+    Categoria ||--o{ Titulo_categoria:""
+    Tipo_perfil ||--o{ Perfil:""
+    Imagen ||--o{ Perfil:""
+    Idioma_contenido ||--o{ Calidad_idioma_contenido:""
+    Calidad_idioma_contenido }o--|| Calidad: ""
+    Idioma ||--o{ Idioma_contenido:""
     Titulo ||--o{ Idioma_titulo: ""
-    Contenido ||--o{ Idioma_contenido: ""
-    Idioma ||--o{ Idioma_contenido: ""
-    Idioma_contenido ||--o{ Calidad_idioma_contenido: ""
-    Calidad ||--o{ Calidad_idioma_contenido: ""
-    Marca_tarjeta ||--o{ Tarjeta: ""
-    Metodo_pago ||--o{ Tarjeta: ""
-    Tarjeta ||--o{ Usuario: ""
-    Estado_cobro ||--o{ Cobro: ""
+    Idioma_titulo }o--|| Idioma:""
+    Registro }o--|| Usuario:""
+    Pais ||--o{ Usuario: ""
+    Plan ||--o{ Suscripcion: ""
+    Usuario ||--o{ Suscripcion:""
+    Suscripcion ||--o{ Cobro:""
+    Estado_cobro ||--o{ Cobro:""
+    Tarjeta ||--o{ Cobro:""
+    Usuario }o--|| Tarjeta:""
+    Marca_tarjeta ||--o{ Tarjeta:""
+    Metodo_pago ||--o{ Tarjeta:""
