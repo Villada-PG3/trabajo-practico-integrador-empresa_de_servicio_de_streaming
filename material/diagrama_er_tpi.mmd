@@ -8,8 +8,7 @@ erDiagram
         int id PK
         str nombre
         str descripcion
-        float precio
-        int cantidad_dispositivos
+        int cantidad_pantallas_simultaneas
     }
 
     Calidad{
@@ -25,6 +24,15 @@ erDiagram
         int id_Calidad FK
     }
 
+    Precio  {
+        int id PK
+        float precio
+        date fecha_inicio
+        date fecha_fin
+        int id_Plan FK
+    }
+
+
     %% Si es serie, pelicula, miniserie, etc.
     Tipo_titulo{
         int id PK
@@ -38,6 +46,8 @@ erDiagram
         str descripcion_original
         int id_Tipo_titulo FK
         int id_Pais FK
+        date fecha_estreno
+        date fecha_baja
     }
 
     %% La persona que trabaja en el rubro de la produccion
@@ -170,7 +180,7 @@ erDiagram
         int id_Perfil FK
         int id_Contenido FK
         int segundos_vistos
-        date ultima_visualizacion
+        datetime ultima_visualizacion
     }
 
     %% Soluciona la n:m entre contenido e idioma (un contenido esta en varios idiomas)
@@ -182,7 +192,7 @@ erDiagram
     }
 
     %% Relaciona el idioma_contenido y la calidad 
-    Calidad_idioma_contenido{
+    Calidad_idioma_contenido {
         int id PK
         int id_Idioma_contenido FK
         int id_Calidad FK
@@ -238,7 +248,7 @@ erDiagram
         str token_dispositivo 
         %%indica si el token es valido aún
         str sistema_operativo
-        date hora_conexion
+        datetime ultima_conexion
         bool estado_sesion
     }
 
@@ -247,7 +257,8 @@ erDiagram
         int id PK
         int id_Usuario FK
         int id_Plan FK
-        date fecha_incripcion
+        date fecha_inscripcion
+        date fecha_vigencia
         date fecha_cancelacion
         bool habilitado
     }
@@ -267,7 +278,7 @@ erDiagram
         date fecha_cobro
         int id_Estado_cobro FK
         int id_Tarjeta FK 
-        int numero_autorizacion
+        str numero_autorizacion
         %%id_tarjeta se saca de suscrpcion a la hora del cobro, y luego se almacena por historial
         float monto
     }
@@ -307,6 +318,7 @@ erDiagram
     Calidad_idioma_contenido }o--|| Calidad: ""
     Calidad ||--o{ Plan_calidad: ""
     Plan_calidad }o--||Plan: ""
+    Plan ||--o{ Precio: ""
     Plan ||--o{ Suscripcion: ""
     Cobro }o--|| Estado_cobro:""
     Suscripcion ||--o{ Cobro:""
