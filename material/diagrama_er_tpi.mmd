@@ -170,7 +170,13 @@ erDiagram
         int id_Perfil FK
         int id_Titulo FK
         int id_Calificacion FK
-        bool por_ver
+    }
+
+    Porver{
+        int id PK
+        int id_Perfil_titulo FK
+        date fecha_agregado
+        date fecha_eliminado
     }
 
     %% Almacena cuanto vio el perfil un determinado contenido
@@ -305,7 +311,10 @@ erDiagram
 
     Tipo_titulo ||--o{ Titulo: ""
     Imagen ||--o{ Perfil:""
+    
     Perfil_titulo }o--|| Calificacion:""
+    Perfil_titulo ||--o{ Porver:""
+
     Contenido ||--o{ Perfil_contenido:""
     Tipo_perfil ||--o{ Perfil:""
     Perfil ||--o{ Perfil_titulo:""
