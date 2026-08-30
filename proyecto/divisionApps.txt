@@ -1,0 +1,39 @@
+Este archivo es para establecer como van a estar divididos
+los varios models.py dentro de las 3 apps.
+Dividimos las apps con el criterio de que cada una deberia tener una 
+responsabilidad principal del programa: Manejo de Usuarios, logins/
+logouts o registros, Otra con la Plataforma de streaming como tal y
+sus funciones de organizar titulos y contenidos y por ultimo una con
+la responsabilidad de manejar los pagos.
+Diagrama:
+├── user
+│   ├── Usuario
+│   ├── Perfil
+│   ├── TipoPerfil
+|   ├── Imagen
+│   └── Registro
+│
+├── streaming
+│   ├── Titulo
+│   ├── TipoTitulo
+│   ├── Categoria
+│   ├── Elenco
+│   ├── Rol
+│   ├── Idioma
+│   ├── Pais
+│   ├── Contenido
+│   ├── Subtitulo
+│   ├── Calidad
+│   ├── Calificacion
+│   ├── ... tablas intermedias ...
+│   └── ... historial/reproducción ...
+│
+└── pagos
+    ├── Plan
+    ├── Precio
+    ├── Suscripcion
+    ├── Cobro
+    ├── EstadoCobro
+    ├── Tarjeta
+    ├── MarcaTarjeta
+    └── MetodoPago

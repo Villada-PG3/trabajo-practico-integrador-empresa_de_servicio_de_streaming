@@ -331,7 +331,7 @@ erDiagram
     Plan ||--o{ Suscripcion: ""
     Cobro }o--|| Estado_cobro:""
     Suscripcion ||--o{ Cobro:""
-    Usuario }o--|| Tarjeta:""
+    Usuario }o--|o Tarjeta:""
     Tarjeta }o--|| Marca_tarjeta:""
     Tarjeta }o--|| Metodo_pago:""
 
