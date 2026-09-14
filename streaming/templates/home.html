@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}Inicio - StreamingApp{% endblock %}
+
+{% block content %}
+<div class="position-relative text-center text-white py-5 d-flex align-items-center justify-content-center" 
+     style="min-height: 80vh; background: linear-gradient(rgba(0,0,0,0.75), rgba(0,0,0,0.75)), url('https://picsum.photos/1920/1080') center/cover no-repeat;">
+    
+    <div class="container my-5 px-4" style="max-width: 700px;">
+        <!-- Título principal -->
+        <h1 class="display-4 fw-bold mb-3">
+            Películas, series ilimitadas y mucho más
+        </h1>
+        
+        <!-- Subtítulo -->
+        <p class="fs-4 fw-normal mb-4">
+            Disfruta donde quieras. Cancela en cualquier momento.
+        </p>
+
+        <p class="lead mb-4">
+            ¿Quieres ver algo ya? Ingresa tu email para crear una cuenta o reiniciar tu membresía.
+        </p>
+
+        <!-- Formulario básico para iniciar registro -->
+        <form action="#" method="GET" class="row g-2 justify-content-center">
+            <div class="col-12 col-md-8">
+                <input type="email" 
+                       name="email" 
+                       class="form-control form-control-lg bg-dark text-white border-secondary" 
+                       placeholder="Dirección de email" 
+                       required>
+            </div>
+            <div class="col-12 col-md-4">
+                <button type="submit" class="btn btn-netflix btn-lg w-100">
+                    Comenzar &gt;
+                </button>
+            </div>
+        </form>
+    </div>
+
+</div>
+
+<!-- Sección informativa simple -->
+<div class="border-top border-secondary border-opacity-25 py-5 bg-black">
+    <div class="container text-center text-md-start">
+        <div class="row align-items-center g-4">
+            <div class="col-md-6">
+                <h2 class="fw-bold fs-2 mb-3">Disfruta en tu TV</h2>
+                <p class="fs-5 text-secondary">
+                    Ve en smart TV, PlayStation, Xbox, Chromecast, Apple TV, reproductores de Blu-ray y más.
+                </p>
+            </div>
+            <div class="col-md-6 text-center">
+                <i class="bi bi-tv display-1 text-danger"></i>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
