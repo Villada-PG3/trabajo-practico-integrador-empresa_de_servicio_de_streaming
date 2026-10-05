@@ -14,8 +14,10 @@ Including another URLconf
     1. Import the include() function: from django.urls import include, path
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
+from django import views
 from django.contrib import admin
 from django.urls import include, path
+from streaming import views 
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -26,4 +28,12 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     # Incluye las URLs de tu app (reemplaza 'content' por el nombre exacto de tu app):
     path('', include('streaming.urls')),
+]
+
+
+urlpatterns = [
+    path('admin/', admin.site.urls),
+    path('', views.home, name='home'), 
+    path('login/', views.login_view, name='login'),
+    path('logout/', views.logout_view, name='logout'),
 ]
