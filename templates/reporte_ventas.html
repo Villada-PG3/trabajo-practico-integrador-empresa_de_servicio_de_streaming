@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reporte Gerencial de Ventas - Streaming</title>
+    <!-- Tailwind CSS para diseño y estilos -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js para renderizar los gráficos -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gray-100 font-sans text-gray-800">
+
+    <div class="max-w-7xl mx-auto px-4 py-8">
+        <!-- Encabezado -->
+        <header class="mb-8 border-b pb-4">
+            <h1 class="text-3xl font-bold text-gray-900">Reporte Gerencial de Ventas</h1>
+            <p class="text-gray-600">Variación de precios y distribución de miembros por plan en el período seleccionado.</p>
+        </header>
+
+        <!-- Formulario de Selección de Rango de Fechas -->
+        <form method="GET" class="bg-white p-6 rounded-lg shadow-md mb-8 flex flex-wrap items-end gap-4">
+            <div>
+                <label for="fecha_inicio" class="block text-sm font-medium text-gray-700 mb-1">Fecha Desde:</label>
+                <input type="date" id="fecha_inicio" name="fecha_inicio" value="{{ fecha_inicio }}"
+                       class="border border-gray-300 rounded-md px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500">
+            </div>
+            <div>
+                <label for="fecha_fin" class="block text-sm font-medium text-gray-700 mb-1">Fecha Hasta:</label>
+                <input type="date" id="fecha_fin" name="fecha_fin" value="{{ fecha_fin }}"
+                       class="border border-gray-300 rounded-md px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500">
+            </div>
+            <button type="submit" class="bg-indigo-600 text-white font-medium px-5 py-2 rounded-md hover:bg-indigo-700 transition">
+                Filtrar Reporte
+            </button>
+            <a href="?" class="text-sm text-gray-500 hover:text-gray-700 py-2">Limpiar Filtros</a>
+        </form>
+
+        <!-- Grid para Gráficos -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            
+            <!-- Gráfico 1: Miembros por Plan -->
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <h2 class="text-xl font-semibold mb-4 text-gray-800">Miembros por Plan</h2>
+                <div class="relative h-80">
+                    <canvas id="chartMiembros"></canvas>
+                </div>
+            </div>
+
+            <!-- Gráfico 2: Variación de Precios -->
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <h2 class="text-xl font-semibold mb-4 text-gray-800">Variación de Precios por Plan</h2>
+                <div class="relative h-80">
+                    <canvas id="chartPrecios"></canvas>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Script de Inicialización de Chart.js -->
+    <!-- Carga de datos de forma segura utilizando json_script -->
+{{ labels_miembros_json|json_script:"labels-miembros-data" }}
+{{ data_miembros_json|json_script:"data-miembros-data" }}
+{{ fechas_precio_labels_json|json_script:"fechas-precio-data" }}
+{{ datasets_precios_json|json_script:"datasets-precios-data" }}
+
+<script>
+    // Obtener y parsear los datos desde las etiquetas de script generadas por Django
+    const labelsMiembros = JSON.parse(document.getElementById('labels-miembros-data').textContent);
+    const dataMiembros = JSON.parse(document.getElementById('data-miembros-data').textContent);
+    const fechasPrecio = JSON.parse(document.getElementById('fechas-precio-data').textContent);
+    const datasetsPrecios = JSON.parse(document.getElementById('datasets-precios-data').textContent);
+
+    // Si en la vista views.py ya envías JSON codificado (json.dumps), 
+    // asegúrate de des-serializarlo en caso de que sea una cadena JSON:
+    const parsedLabelsMiembros = typeof labelsMiembros === 'string' ? JSON.parse(labelsMiembros) : labelsMiembros;
+    const parsedDataMiembros = typeof dataMiembros === 'string' ? JSON.parse(dataMiembros) : dataMiembros;
+    const parsedFechasPrecio = typeof fechasPrecio === 'string' ? JSON.parse(fechasPrecio) : fechasPrecio;
+    const parsedDatasetsPrecios = typeof datasetsPrecios === 'string' ? JSON.parse(datasetsPrecios) : datasetsPrecios;
+
+    // Configuración global de Chart.js
+    Chart.defaults.color = '#b3b3b3';
+    Chart.defaults.borderColor = '#2f2f2f';
+
+    // 1. Gráfico de Miembros por Plan (Barras)
+    const ctxMiembros = document.getElementById('chartMiembros').getContext('2d');
+    new Chart(ctxMiembros, {
+        type: 'bar',
+        data: {
+            labels: parsedLabelsMiembros,
+            datasets: [{
+                label: 'Cantidad de Miembros',
+                data: parsedDataMiembros,
+                backgroundColor: 'rgba(229, 9, 20, 0.75)',
+                borderColor: 'rgba(229, 9, 20, 1)',
+                borderWidth: 1,
+                borderRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: { precision: 0 }
+                }
+            }
+        }
+    });
+
+    // 2. Gráfico de Variación de Precios (Líneas)
+    const ctxPrecios = document.getElementById('chartPrecios').getContext('2d');
+    new Chart(ctxPrecios, {
+        type: 'line',
+        data: {
+            labels: parsedFechasPrecio,
+            datasets: parsedDatasetsPrecios
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    labels: { color: '#ffffff' }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: { display: true, text: 'Precio ($)', color: '#ffffff' }
+                },
+                x: {
+                    title: { display: true, text: 'Fecha', color: '#ffffff' }
+                }
+            }
+        }
+    });
+</script>
