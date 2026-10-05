@@ -24,11 +24,3 @@ urlpatterns = [
     # Incluye las URLs de tu app (reemplaza 'content' por el nombre exacto de tu app):
     path('', include('streaming.urls')),
 ]
-
-
-urlpatterns = [
-    path('admin/', admin.site.urls),
-    path('', views.home, name='home'), 
-    path('login/', views.login_view, name='login'),
-    path('logout/', views.logout_view, name='logout'),
-]

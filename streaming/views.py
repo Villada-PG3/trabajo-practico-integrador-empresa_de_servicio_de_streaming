@@ -1,6 +1,13 @@
 from django.shortcuts import render, redirect
 from django.contrib.auth import authenticate, login, logout
 from django.contrib import messages
+import json
+from django.shortcuts import render
+from django.db.models import Count, F
+from django.utils.dateparse import parse_date
+
+# Modelos con los nombres exactos definidos en tu models.py
+from .models import Precio, Suscripcion, Plan
 
 
 def home(request):
@@ -27,14 +34,6 @@ def login_view(request):
 def logout_view(request):
     logout(request)
     return redirect('home')
-
-import json
-from django.shortcuts import render
-from django.db.models import Count, F
-from django.utils.dateparse import parse_date
-
-# Modelos con los nombres exactos definidos en tu models.py
-from .models import Precio, Suscripcion, Plan
 
 def reporte_ventas_view(request):
     # Capturar fechas del filtro (GET)
