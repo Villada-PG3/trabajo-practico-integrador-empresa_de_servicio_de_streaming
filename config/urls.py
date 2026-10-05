@@ -19,11 +19,6 @@ from django.urls import include, path
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-]
-
-
-urlpatterns = [
-    path('admin/', admin.site.urls),
     # Incluye las URLs de tu app (reemplaza 'content' por el nombre exacto de tu app):
     path('', include('streaming.urls')),
 ]
