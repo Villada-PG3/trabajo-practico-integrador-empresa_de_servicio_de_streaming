@@ -1,65 +1,107 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reporte Gerencial de Ventas - Streaming</title>
-    <!-- Tailwind CSS para diseño y estilos -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Chart.js para renderizar los gráficos -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-</head>
-<body class="bg-gray-100 font-sans text-gray-800">
+{% extends 'base.html' %}
 
-    <div class="max-w-7xl mx-auto px-4 py-8">
-        <!-- Encabezado -->
-        <header class="mb-8 border-b pb-4">
-            <h1 class="text-3xl font-bold text-gray-900">Reporte Gerencial de Ventas</h1>
-            <p class="text-gray-600">Variación de precios y distribución de miembros por plan en el período seleccionado.</p>
-        </header>
+{% block title %}Reporte Gerencial de Ventas - StreamingApp{% endblock %}
 
-        <!-- Formulario de Selección de Rango de Fechas -->
-        <form method="GET" class="bg-white p-6 rounded-lg shadow-md mb-8 flex flex-wrap items-end gap-4">
-            <div>
-                <label for="fecha_inicio" class="block text-sm font-medium text-gray-700 mb-1">Fecha Desde:</label>
-                <input type="date" id="fecha_inicio" name="fecha_inicio" value="{{ fecha_inicio }}"
-                       class="border border-gray-300 rounded-md px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500">
-            </div>
-            <div>
-                <label for="fecha_fin" class="block text-sm font-medium text-gray-700 mb-1">Fecha Hasta:</label>
-                <input type="date" id="fecha_fin" name="fecha_fin" value="{{ fecha_fin }}"
-                       class="border border-gray-300 rounded-md px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500">
-            </div>
-            <button type="submit" class="bg-indigo-600 text-white font-medium px-5 py-2 rounded-md hover:bg-indigo-700 transition">
-                Filtrar Reporte
-            </button>
-            <a href="?" class="text-sm text-gray-500 hover:text-gray-700 py-2">Limpiar Filtros</a>
-        </form>
+{% block extra_css %}
+<style>
+    /* Estilos personalizados oscuros para integrarse con la temática Netflix */
+    .card-dark {
+        background-color: var(--netflix-dark-gray);
+        border: 1px solid var(--netflix-light-gray);
+        color: #ffffff;
+    }
+    
+    .form-control-dark {
+        background-color: var(--netflix-light-gray);
+        border: 1px solid #404040;
+        color: #ffffff;
+    }
+    
+    .form-control-dark:focus {
+        background-color: var(--netflix-light-gray);
+        border-color: var(--netflix-red);
+        color: #ffffff;
+        box-shadow: 0 0 0 0.25rem rgba(229, 9, 20, 0.25);
+    }
 
-        <!-- Grid para Gráficos -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            
-            <!-- Gráfico 1: Miembros por Plan -->
-            <div class="bg-white p-6 rounded-lg shadow-md">
-                <h2 class="text-xl font-semibold mb-4 text-gray-800">Miembros por Plan</h2>
-                <div class="relative h-80">
-                    <canvas id="chartMiembros"></canvas>
-                </div>
-            </div>
+    .form-label-dark {
+        color: #b3b3b3;
+    }
+</style>
+{% endblock %}
 
-            <!-- Gráfico 2: Variación de Precios -->
-            <div class="bg-white p-6 rounded-lg shadow-md">
-                <h2 class="text-xl font-semibold mb-4 text-gray-800">Variación de Precios por Plan</h2>
-                <div class="relative h-80">
-                    <canvas id="chartPrecios"></canvas>
-                </div>
-            </div>
-
+{% block content %}
+<div class="container py-4">
+    <!-- Encabezado del Reporte -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h2 fw-bold text-white"><i class="bi bi-graph-up-arrow me-2 text-danger"></i>Reporte Gerencial de Ventas</h1>
+            <p class="text-secondary mb-0">Variación de precios y distribución de miembros por plan en el período seleccionado.</p>
         </div>
     </div>
 
-    <!-- Script de Inicialización de Chart.js -->
-    <!-- Carga de datos de forma segura utilizando json_script -->
+    <!-- Formulario de Filtros por Fecha -->
+    <div class="card card-dark shadow-sm mb-4">
+        <div class="card-body">
+            <form method="GET" class="row g-3 align-items-end">
+                <div class="col-md-4">
+                    <label for="fecha_inicio" class="form-label form-label-dark">Fecha Desde:</label>
+                    <input type="date" class="form-control form-control-dark" id="fecha_inicio" name="fecha_inicio" value="{{ fecha_inicio }}">
+                </div>
+                <div class="col-md-4">
+                    <label for="fecha_fin" class="form-label form-label-dark">Fecha Hasta:</label>
+                    <input type="date" class="form-control form-control-dark" id="fecha_fin" name="fecha_fin" value="{{ fecha_fin }}">
+                </div>
+                <div class="col-md-4 d-flex gap-2">
+                    <button type="submit" class="btn btn-netflix flex-grow-1">
+                        <i class="bi bi-funnel-fill me-1"></i> Filtrar Reporte
+                    </button>
+                    <a href="?" class="btn btn-outline-secondary">
+                        <i class="bi bi-arrow-counterclockwise"></i>
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Gráficos -->
+    <div class="row g-4">
+        <!-- Gráfico 1: Miembros por Plan -->
+        <div class="col-lg-6">
+            <div class="card card-dark h-100 shadow-sm">
+                <div class="card-header bg-transparent border-secondary">
+                    <h5 class="card-title mb-0 text-white"><i class="bi bi-people-fill text-danger me-2"></i>Miembros por Plan</h5>
+                </div>
+                <div class="card-body">
+                    <div style="position: relative; height: 320px;">
+                        <canvas id="chartMiembros"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Gráfico 2: Variación de Precios -->
+        <div class="col-lg-6">
+            <div class="card card-dark h-100 shadow-sm">
+                <div class="card-header bg-transparent border-secondary">
+                    <h5 class="card-title mb-0 text-white"><i class="bi bi-currency-dollar text-danger me-2"></i>Variación de Precios por Plan</h5>
+                </div>
+                <div class="card-body">
+                    <div style="position: relative; height: 320px;">
+                        <canvas id="chartPrecios"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- Carga de Chart.js para renderizar los gráficos -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<!-- Carga de datos de forma segura utilizando json_script -->
 {{ labels_miembros_json|json_script:"labels-miembros-data" }}
 {{ data_miembros_json|json_script:"data-miembros-data" }}
 {{ fechas_precio_labels_json|json_script:"fechas-precio-data" }}
@@ -141,3 +183,4 @@
         }
     });
 </script>
+{% endblock %}
