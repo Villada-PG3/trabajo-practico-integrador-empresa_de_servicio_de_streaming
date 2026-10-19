@@ -8,38 +8,36 @@
         <div class="card-body">
             <h2 class="fw-bold mb-4">Iniciar sesión</h2>
 
-            <!-- Mensajes de error si los hay -->
-            {% if messages %}
-                {% for message in messages %}
-                    <div class="alert alert-danger py-2" role="alert">
-                        {{ message }}
-                    </div>
+            {% if form.non_field_errors %}
+                {% for error in form.non_field_errors %}
+                    <div class="alert alert-danger py-2" role="alert">{{ error }}</div>
                 {% endfor %}
             {% endif %}
 
             <form method="POST" action="{% url 'login' %}">
                 {% csrf_token %}
-                
-                <!-- Email / Usuario -->
                 <div class="mb-3">
-                    <label for="id_username" class="form-label text-white-50 fw-semibold">Email o número de teléfono</label>
-                    <input type="email" name="username" class="form-control bg-secondary text-white border-0 py-2 fs-6" id="id_username" placeholder="Ingresa tu email" required>
+                    <label for="{{ form.email.id_for_label }}" class="form-label text-white-50 fw-semibold">{{ form.email.label }}</label>
+                    {{ form.email }}
+                    {% for error in form.email.errors %}
+                        <div class="text-danger small mt-1">{{ error }}</div>
+                    {% endfor %}
                 </div>
-
-                <!-- Contraseña -->
                 <div class="mb-4">
-                    <label for="id_password" class="form-label text-white-50 fw-semibold">Contraseña</label>
-                    <input type="password" name="password" class="form-control bg-secondary text-white border-0 py-2 fs-6" id="id_password" placeholder="Ingresa tu contraseña" required>
+                    <label for="{{ form.password.id_for_label }}" class="form-label text-white-50 fw-semibold">{{ form.password.label }}</label>
+                    {{ form.password }}
+                    {% for error in form.password.errors %}
+                        <div class="text-danger small mt-1">{{ error }}</div>
+                    {% endfor %}
                 </div>
 
-                <!-- Botón Iniciar Sesión -->
                 <button class="btn btn-danger w-100 py-2 fs-5 fw-semibold mb-3" type="submit">
                     Iniciar sesión
                 </button>
 
                 <div class="d-flex justify-content-between align-items-center text-secondary small mb-4">
                     <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="rememberMe">
+                        <input class="form-check-input" type="checkbox" name="remember_me" value="1" id="rememberMe">
                         <label class="form-check-label text-secondary" for="rememberMe">
                             Recuérdame
                         </label>
@@ -51,7 +49,7 @@
             <div class="mt-4 pt-3 border-top border-secondary border-opacity-25 text-secondary">
                 <p class="mb-1">
                     ¿Primera vez en StreamingApp? 
-                    <a href="#" class="text-white text-decoration-none fw-bold">Suscríbete ahora</a>.
+                    <a href="{% url 'registro' %}" class="text-white text-decoration-none fw-bold">Suscríbete ahora</a>.
                 </p>
             </div>
         </div>

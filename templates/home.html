@@ -21,8 +21,13 @@
             ¿Quieres ver algo ya? Ingresa tu email para crear una cuenta o reiniciar tu membresía.
         </p>
 
-        <!-- Formulario básico para iniciar registro -->
-        <form action="#" method="GET" class="row g-2 justify-content-center">
+        {% if user.is_authenticated and suscripcion_actual %}
+            <p class="text-white mb-4">Tu plan actual: <strong>{{ suscripcion_actual.plan.nombre }}</strong></p>
+        {% elif user.is_authenticated %}
+            <p class="text-white mb-4">Elige un plan para completar tu suscripción.</p>
+            <a href="{% url 'seleccionar_plan' %}" class="btn btn-netflix btn-lg">Elegir plan &gt;</a>
+        {% else %}
+        <form action="{% url 'registro' %}" method="GET" class="row g-2 justify-content-center">
             <div class="col-12 col-md-8">
                 <input type="email" 
                        name="email" 
@@ -36,6 +41,7 @@
                 </button>
             </div>
         </form>
+        {% endif %}
     </div>
 
 </div>

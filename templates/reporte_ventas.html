@@ -45,12 +45,18 @@
         <div class="card-body">
             <form method="GET" class="row g-3 align-items-end">
                 <div class="col-md-4">
-                    <label for="fecha_inicio" class="form-label form-label-dark">Fecha Desde:</label>
-                    <input type="date" class="form-control form-control-dark" id="fecha_inicio" name="fecha_inicio" value="{{ fecha_inicio }}">
+                    <label for="{{ form.fecha_inicio.id_for_label }}" class="form-label form-label-dark">{{ form.fecha_inicio.label }}:</label>
+                    {{ form.fecha_inicio }}
+                    {% for error in form.fecha_inicio.errors %}
+                        <div class="text-danger small mt-1">{{ error }}</div>
+                    {% endfor %}
                 </div>
                 <div class="col-md-4">
-                    <label for="fecha_fin" class="form-label form-label-dark">Fecha Hasta:</label>
-                    <input type="date" class="form-control form-control-dark" id="fecha_fin" name="fecha_fin" value="{{ fecha_fin }}">
+                    <label for="{{ form.fecha_fin.id_for_label }}" class="form-label form-label-dark">{{ form.fecha_fin.label }}:</label>
+                    {{ form.fecha_fin }}
+                    {% for error in form.fecha_fin.errors %}
+                        <div class="text-danger small mt-1">{{ error }}</div>
+                    {% endfor %}
                 </div>
                 <div class="col-md-4 d-flex gap-2">
                     <button type="submit" class="btn btn-netflix flex-grow-1">
@@ -61,6 +67,9 @@
                     </a>
                 </div>
             </form>
+            {% for error in form.non_field_errors %}
+                <div class="text-danger small mt-3">{{ error }}</div>
+            {% endfor %}
         </div>
     </div>
 
@@ -114,13 +123,6 @@
     const fechasPrecio = JSON.parse(document.getElementById('fechas-precio-data').textContent);
     const datasetsPrecios = JSON.parse(document.getElementById('datasets-precios-data').textContent);
 
-    // Si en la vista views.py ya envías JSON codificado (json.dumps), 
-    // asegúrate de des-serializarlo en caso de que sea una cadena JSON:
-    const parsedLabelsMiembros = typeof labelsMiembros === 'string' ? JSON.parse(labelsMiembros) : labelsMiembros;
-    const parsedDataMiembros = typeof dataMiembros === 'string' ? JSON.parse(dataMiembros) : dataMiembros;
-    const parsedFechasPrecio = typeof fechasPrecio === 'string' ? JSON.parse(fechasPrecio) : fechasPrecio;
-    const parsedDatasetsPrecios = typeof datasetsPrecios === 'string' ? JSON.parse(datasetsPrecios) : datasetsPrecios;
-
     // Configuración global de Chart.js
     Chart.defaults.color = '#b3b3b3';
     Chart.defaults.borderColor = '#2f2f2f';
@@ -130,10 +132,10 @@
     new Chart(ctxMiembros, {
         type: 'bar',
         data: {
-            labels: parsedLabelsMiembros,
+            labels: labelsMiembros,
             datasets: [{
                 label: 'Cantidad de Miembros',
-                data: parsedDataMiembros,
+                data: dataMiembros,
                 backgroundColor: 'rgba(229, 9, 20, 0.75)',
                 borderColor: 'rgba(229, 9, 20, 1)',
                 borderWidth: 1,
@@ -160,8 +162,8 @@
     new Chart(ctxPrecios, {
         type: 'line',
         data: {
-            labels: parsedFechasPrecio,
-            datasets: parsedDatasetsPrecios
+            labels: fechasPrecio,
+            datasets: datasetsPrecios
         },
         options: {
             responsive: true,

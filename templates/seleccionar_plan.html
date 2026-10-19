@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}Elegir plan - RedFlix{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="text-center mb-4">
+        <h1 class="fw-bold">Elige tu plan</h1>
+        <p class="text-secondary">Selecciona un plan disponible para asociarlo a tu cuenta.</p>
+    </div>
+
+    {% if planes %}
+        <form method="post">
+            {% csrf_token %}
+            <div class="row g-4 justify-content-center">
+                {% for item in planes %}
+                    <div class="col-md-6 col-lg-4">
+                        <label class="card bg-dark text-white border-secondary h-100 p-4">
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="radio" name="plan" value="{{ item.plan.pk }}" required>
+                                <span class="form-check-label fw-bold fs-4">{{ item.plan.nombre }}</span>
+                            </div>
+                            <p class="text-secondary">{{ item.plan.descripcion|default:"Plan de streaming" }}</p>
+                            <p class="fs-3 fw-bold">${{ item.precio.precio }}</p>
+                            <p class="small text-secondary mb-0">
+                                Hasta {{ item.plan.cantidad_pantallas_simultaneas }} pantallas simultáneas
+                            </p>
+                        </label>
+                    </div>
+                {% endfor %}
+            </div>
+            <div class="text-center mt-4">
+                <button type="submit" class="btn btn-netflix btn-lg">Confirmar plan</button>
+            </div>
+        </form>
+    {% else %}
+        <div class="alert alert-secondary text-center">
+            No hay planes con precios vigentes para elegir. Contacta con el administrador del servicio.
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
