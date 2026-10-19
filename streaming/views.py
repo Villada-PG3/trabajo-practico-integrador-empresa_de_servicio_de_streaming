@@ -5,8 +5,6 @@ import json
 from django.shortcuts import render
 from django.db.models import Count, F
 from django.utils.dateparse import parse_date
-
-# Modelos con los nombres exactos definidos en tu models.py
 from .models import Precio, Suscripcion, Plan
 
 
