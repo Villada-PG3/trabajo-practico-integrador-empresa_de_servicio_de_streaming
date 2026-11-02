@@ -1,6 +1,49 @@
-{% extends "base.html" %}
-{% block title %}Iniciar Sesión - StreamingApp{% endblock %}
+{% extends "base_login.html" %}
+{% block title %}Iniciar Sesión - RedFlix{% endblock %}
 {% block content %}
-<input type="email" name="email" value="{{ email }}">
-<h1>{{ email }}</h1>
+<div class="login-page">
+    <div class="login-container">
+        <h1 class="login-title">Iniciar sesión</h1>
+        <div class="login-title-line"></div>
+        <form method="post" class="login-form">
+            {% csrf_token %}
+            <div class="login-field">
+                <input type="email"
+                       name="email"
+                       placeholder="Ingresá tu Email"
+                       value="{{ email }}"
+                       required>
+            </div>
+            <div class="login-field login-password-field">
+                <input type="password"
+                       name="password"
+                       placeholder="Ingresá tu Contraseña"
+                       required>
+
+                <button type="button" class="login-password-toggle">
+                    ◉
+                </button>
+            </div>
+            <a href="#" class="login-forgot">
+                ¿Olvidaste tu contraseña?
+            </a>
+            <button type="submit" class="login-button">
+                Iniciar sesión
+            </button>
+        </form>
+        <div class="login-register">
+            ¿No tenés una cuenta?
+            <a href={% url 'signin' %}>Registrate</a>
+        </div>
+        <div class="login-divider"></div>
+        <button class="login-social login-facebook">
+            <span class="login-social-icon">f</span>
+            Continuar con Facebook
+        </button>
+        <button class="login-social login-google">
+            <span class="login-social-icon">G</span>
+            Continuar con Google
+        </button>
+    </div>
+</div>
 {% endblock %}

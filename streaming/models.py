@@ -209,23 +209,15 @@ class MetodoPago(models.Model):
 
 
 class Tarjeta(models.Model):
-    numero = models.CharField(max_length=30)
-    nombre_titular = models.CharField(max_length=150)
+    numero = models.CharField(max_length=4)
     fecha_vencimiento = models.DateField()
     marca_tarjeta = models.ForeignKey(MarcaTarjeta, on_delete=models.PROTECT, related_name='tarjetas')
     metodo_pago = models.ForeignKey(MetodoPago, on_delete=models.PROTECT, related_name='tarjetas')
     habilitado = models.BooleanField(default=True)
 
     def __str__(self):
-        return f'{self.marca_tarjeta} **** {self.numero[-4:]}'
-    """
-    # Es muy posible que esto no se deberia guardar, en cuyo caso:
-    # ultimos 4 nums para reconocerla
-    numero = models.CharField(max_length=4)
-    marca_tarjeta = models.ForeignKey(MarcaTarjeta, on_delete=models.PROTECT, related_name='tarjetas')
-    metodo_pago = models.ForeignKey(MetodoPago, on_delete=models.PROTECT, related_name='tarjetas')
-    habilitado = models.BooleanField(default=True)
-    """
+        return f'{self.marca_tarjeta} **** **** **** {self.numero}'
+
 
 
 class Plan(models.Model):
