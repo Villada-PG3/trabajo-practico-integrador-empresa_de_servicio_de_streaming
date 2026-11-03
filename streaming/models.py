@@ -306,9 +306,8 @@ class Imagen(Model):
 class Usuario(AbstractUser):
     id = BigAutoField(primary_key=True)
     telefono = PhoneNumberField(blank=True)
-    pais = ForeignKey(Pais, on_delete=CASCADE)
-    idioma = ForeignKey(Idioma, on_delete=CASCADE)
-    # hay que ver despues la cuestion con tarjeta
+    pais = ForeignKey(Pais, on_delete=CASCADE, null=True, blank=True) 
+    idioma = ForeignKey(Idioma, on_delete=CASCADE, null=True, blank=True)
     
     def __str__(self):
         return self.username

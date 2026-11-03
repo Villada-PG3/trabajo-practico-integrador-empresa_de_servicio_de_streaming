@@ -10,4 +10,5 @@ urlpatterns = [
     path('seleccionar-plan/', views.seleccionar_plan, name='seleccionar_plan'),
     path('pago/', views.pago_view, name='pago'),
     path('seleccionar-perfil/', views.seleccionar_perfil_view, name='seleccionar_perfil'),
+    path('crear-perfil/', views.crear_perfil_view, name='crear_perfil'),
 ]
