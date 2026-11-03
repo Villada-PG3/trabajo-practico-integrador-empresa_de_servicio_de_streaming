@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}Configurar método de pago - RedFlix{% endblock %}
+
+{% block content %}
+<div class="container py-5 text-white" style="min-height: 85vh;">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card bg-dark text-white border-secondary p-4 shadow">
+                <div class="card-body">
+                    <span class="text-secondary small">PASO 3 DE 3</span>
+                    <h2 class="fw-bold mb-3">Configura tu tarjeta de crédito o débito</h2>
+                    
+                    <div class="alert alert-secondary d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>Plan {{ plan.nombre }}</strong>
+                            <div class="small text-muted">${{ precio_monto }} ARS / mes</div>
+                        </div>
+                        <a href="{% url 'seleccionar_plan' %}" class="text-danger fw-bold text-decoration-none">Cambiar</a>
+                    </div>
+
+                    <form method="POST">
+                        {% csrf_token %}
+                        
+                        <div class="mb-3">
+                            <label class="form-label text-secondary">Marca de la Tarjeta</label>
+                            <select name="marca_tarjeta" class="form-select bg-black text-white border-secondary" required>
+                                <option value="">Selecciona una opción</option>
+                                {% for marca in marcas %}
+                                    <option value="{{ marca.id }}">{{ marca.nombre }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label text-secondary">Nombre del titular</label>
+                            <input type="text" name="nombre_titular" class="form-control bg-black text-white border-secondary" placeholder="Como figura en la tarjeta" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label text-secondary">Número de tarjeta</label>
+                            <input type="text" name="numero_tarjeta" class="form-control bg-black text-white border-secondary" placeholder="XXXX XXXX XXXX XXXX" required maxlength="19">
+                        </div>
+
+                        <div class="row g-2 mb-4">
+                            <div class="col-6">
+                                <label class="form-label text-secondary">Vencimiento</label>
+                                <input type="date" name="fecha_vencimiento" class="form-control bg-black text-white border-secondary" required>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label text-secondary">Código (CVV)</label>
+                                <input type="password" name="cvv" class="form-control bg-black text-white border-secondary" placeholder="123" required maxlength="4">
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-netflix w-100 py-3 fs-5 fw-bold">
+                            Iniciar Membresía
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

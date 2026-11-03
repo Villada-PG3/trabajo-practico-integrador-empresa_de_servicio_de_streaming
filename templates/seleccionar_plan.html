@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block title %}Selecciona tu plan - StreamingApp{% endblock %}
+
+{% block content %}
+<div class="container py-5 text-white" style="min-height: 85vh;">
+    <div class="text-center mb-5">
+        <h1 class="fw-bold display-5">Elige el plan ideal para ti</h1>
+        <p class="text-secondary fs-5">Cambia de plan o cancela cuando quieras.</p>
+    </div>
+
+    <form method="POST" action="{% url 'seleccionar_plan' %}">
+        {% csrf_token %}
+        <div class="row row-cols-1 row-cols-md-3 g-4 justify-content-center">
+            
+            <!-- Plan Básico -->
+            <div class="col">
+                <div class="card bg-dark text-white border-secondary h-100 p-3 shadow">
+                    <div class="card-body d-flex flex-column">
+                        <h3 class="card-title fw-bold">Básico</h3>
+                        <h4 class="text-danger mb-4">$5.99 <span class="fs-6 text-secondary">/ mes</span></h4>
+                        <ul class="list-unstyled mb-4 text-secondary">
+                            <li class="mb-2"><i class="bi bi-check-lg text-danger me-2"></i> Calidad de video: Buena (SD)</li>
+                            <li class="mb-2"><i class="bi bi-check-lg text-danger me-2"></i> Resolución: 720p</li>
+                            <li class="mb-2"><i class="bi bi-check-lg text-danger me-2"></i> Pantallas simultáneas: 1</li>
+                        </ul>
+                        <div class="mt-auto">
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="radio" name="plan_id" id="plan1" value="1" required>
+                                <label class="form-check-label fw-bold" for="plan1">Seleccionar Básico</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Plan Estándar -->
+            <div class="col">
+                <div class="card bg-dark text-white border-danger h-100 p-3 shadow position-relative">
+                    <div class="card-body d-flex flex-column">
+                        <span class="position-absolute top-0 start-50 translate-middle badge bg-danger">Más Popular</span>
+                        <h3 class="card-title fw-bold mt-2">Estándar</h3>
+                        <h4 class="text-danger mb-4">$9.99 <span class="fs-6 text-secondary">/ mes</span></h4>
+                        <ul class="list-unstyled mb-4 text-secondary">
+                            <li class="mb-2"><i class="bi bi-check-lg text-danger me-2"></i> Calidad de video: Excelente (HD)</li>
+                            <li class="mb-2"><i class="bi bi-check-lg text-danger me-2"></i> Resolución: 1080p</li>
+                            <li class="mb-2"><i class="bi bi-check-lg text-danger me-2"></i> Pantallas simultáneas: 2</li>
+                        </ul>
+                        <div class="mt-auto">
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="radio" name="plan_id" id="plan2" value="2" checked>
+                                <label class="form-check-label fw-bold" for="plan2">Seleccionar Estándar</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Plan Premium -->
+            <div class="col">
+                <div class="card bg-dark text-white border-secondary h-100 p-3 shadow">
+                    <div class="card-body d-flex flex-column">
+                        <h3 class="card-title fw-bold">Premium</h3>
+                        <h4 class="text-danger mb-4">$13.99 <span class="fs-6 text-secondary">/ mes</span></h4>
+                        <ul class="list-unstyled mb-4 text-secondary">
+                            <li class="mb-2"><i class="bi bi-check-lg text-danger me-2"></i> Calidad de video: Óptima (Ultra HD)</li>
+                            <li class="mb-2"><i class="bi bi-check-lg text-danger me-2"></i> Resolución: 4K + HDR</li>
+                            <li class="mb-2"><i class="bi bi-check-lg text-danger me-2"></i> Pantallas simultáneas: 4</li>
+                        </ul>
+                        <div class="mt-auto">
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="radio" name="plan_id" id="plan3" value="3">
+                                <label class="form-check-label fw-bold" for="plan3">Seleccionar Premium</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="text-center mt-5">
+            <button type="submit" class="btn btn-danger btn-lg px-5 py-3 fs-5 fw-semibold shadow">
+                Continuar al Pago &gt;
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}
