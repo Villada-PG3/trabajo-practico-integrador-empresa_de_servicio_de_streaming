@@ -1,12 +1,13 @@
 from django.shortcuts import render, redirect
-from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.contrib import messages
 import json
-from django.shortcuts import render
 from django.db.models import Count, F
 from django.utils.dateparse import parse_date
-from .models import Precio, Suscripcion, Plan
+from .models import Idioma, Precio, Suscripcion, Plan
 from django.contrib.auth.models import User
+
+User = get_user_model()
 
 def home(request):
     """Vista para la landing page / página de inicio pública"""
@@ -113,20 +114,36 @@ def reporte_ventas_view(request):
 
 
 def registro_view(request):
-    if request.method == 'POST':
-        email = request.POST.get('email')
-        password = request.POST.get('password')
-        telefono = request.POST.get('telefono')
-        
-        # Validación básica de existencia
-        if User.objects.filter(username=email).exists():
-            messages.error(request, 'Ya existe una cuenta asociada a este correo.')
-        else:
-            # Crear el usuario (usando el email como username)
-            user = User.objects.create_user(username=email, email=email, password=password)
-            
-            # Autenticar automáticamente al registrarse y enviar a seleccionar plan
-            login(request, user)
-            return redirect('seleccionar_plan')
-            
-    return render(request, 'registro.html')
+  if request.method == 'POST':
+    email = request.POST.get('email')
+    password = request.POST.get('password')
+    telefono = request.POST.get('telefono')
+
+    if User.objects.filter(email=email).exists():
+      messages.error(request, 'Ya existe una cuenta asociada a este correo.')
+    else:
+      idioma_predeterminado = Idioma.objects.first()
+
+      user = User.objects.create_user(
+          username=email,
+          email=email,
+          password=password,
+          telefono=telefono,
+          idioma=idioma_predeterminado,  
+      )
+
+
+      login(request, user)
+
+      return redirect('seleccionar_plan')
+
+  return render(request, 'registro.html')
+
+
+def seleccionar_plan(request):
+  if request.method == 'POST':
+    plan_id = request.POST.get('plan_id')
+    request.session['plan_id'] = plan_id
+    return redirect('pago')
+
+  return render(request, 'seleccionar_plan.html')
