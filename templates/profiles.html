@@ -1,0 +1,32 @@
+{% extends base.html%}
+{% block title %} Perfiles - RedFlix {% endblock %}
+<body style="background: #141414;">
+    <div class="perfiles-container">
+        {% for perfil in perfiles %}
+            <div class="perfil">
+                <div class="perfil-imagen">
+                    <a href="{% url 'seleccionar_perfil' perfil.id %}">
+                        <img src="{{ perfil.imagen.url }}" alt="{{ perfil.nombre }}">
+                    </a>
+                    <button class="perfil-editar" type="button">
+                        ✎
+                    </button>
+                </div>
+                <div class="perfil-nombre">
+                    {{ perfil.nombre }}
+                </div>
+            </div>
+        {% endfor %}
+        <div class="perfil-agregar">
+            <a href="{% url 'crear_perfil' %}">
+                <div class="agregar-icono">
+                    +
+                </div>
+            </a>
+            <div class="perfil-nombre">
+                Agregar perfil
+            </div>
+        </div>
+    </div>
+</body>
+</html>
