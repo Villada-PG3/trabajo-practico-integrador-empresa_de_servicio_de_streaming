@@ -255,6 +255,7 @@ class Precio(models.Model):
 class Suscripcion(models.Model):
     usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='suscripciones')
     plan = models.ForeignKey(Plan, on_delete=models.PROTECT, related_name='suscripciones')
+    tarjeta = models.ForeignKey(Tarjeta, on_delete=models.PROTECT, related_name='suscripciones')
     fecha_inscripcion = models.DateField()
     fecha_vigencia = models.DateField(blank=True, null=True)
     fecha_cancelacion = models.DateField(blank=True, null=True)
@@ -273,7 +274,7 @@ class EstadoCobro(models.Model):
 
 
 class Cobro(models.Model):
-    num_factura = models.IntegerField()
+    # num_factura es el id automatico de django
     suscripcion = models.ForeignKey(Suscripcion, on_delete=models.PROTECT, related_name='cobros')
     fecha_cobro = models.DateField()
     estado_cobro = models.ForeignKey(EstadoCobro, on_delete=models.PROTECT, related_name='cobros')
