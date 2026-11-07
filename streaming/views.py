@@ -298,7 +298,7 @@ def home(request):
     asignar_textos_titulo(mas_reproducidos, getattr(request.user, 'idioma_id', None))
     if mas_reproducidos:
         carruseles.append({
-            'etiqueta': 'Más reproducidos',
+            'etiqueta': 'Más reproducidos' if request.user.is_authenticated else 'Populares',
             'titulos': mas_reproducidos,
             'mostrar_top': not request.user.is_authenticated,
         })
@@ -381,6 +381,16 @@ def home(request):
         'filtro_tipo': filtro_tipo,
         'url_actual': request.get_full_path(),
     })
+
+
+def pagina_inicial_view(request):
+    if request.user.is_authenticated:
+        return redirect('perfiles')
+    return redirect('home')
+
+
+def not_found_view(request, exception=None):
+    return render(request, 'NotFound.html', status=404)
 
 
 @login_required

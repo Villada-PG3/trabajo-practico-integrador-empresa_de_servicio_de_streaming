@@ -2,7 +2,7 @@ from datetime import date
 from io import StringIO
 
 from django.core.management import call_command
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -45,6 +45,43 @@ class FlujoCuentaTests(TestCase):
             'pais': self.pais.pk,
             'idioma': self.idioma.pk,
         }
+
+    def test_ruta_raiz_para_visitantes_lleva_a_inicio(self):
+        response = self.client.get('/')
+
+        self.assertRedirects(response, reverse('home'))
+        self.assertEqual(reverse('home'), '/inicio/')
+
+    def test_ruta_raiz_con_sesion_lleva_a_perfiles(self):
+        usuario = Usuario.objects.create_user(
+            username='persona@example.com',
+            email='persona@example.com',
+            password='UnaClave-larga-2026!',
+        )
+        self.client.force_login(usuario)
+
+        response = self.client.get('/', follow=False)
+
+        self.assertRedirects(
+            response,
+            reverse('perfiles'),
+            fetch_redirect_response=False,
+        )
+
+    @override_settings(DEBUG=False)
+    def test_ruta_inexistente_muestra_not_found_y_vuelve_a_la_raiz(self):
+        response = self.client.get('/no-existe/')
+
+        self.assertEqual(response.status_code, 404)
+        self.assertContains(response, 'NotFound', status_code=404)
+        self.assertContains(response, '¿Te perdiste?', status_code=404)
+        self.assertContains(response, 'Volver a inicio', status_code=404)
+        self.assertContains(
+            response,
+            f'href="{reverse("pagina_inicial")}"',
+            status_code=404,
+        )
+        self.assertContains(response, 'https://picsum.photos/1920/1080', status_code=404)
 
     def test_registro_crea_usuario_y_redirige_a_crear_perfil(self):
         response = self.client.post(reverse('registro'), self.datos_usuario())
@@ -638,7 +675,7 @@ class HomeCarouselesTests(TestCase):
         )
         self.assertEqual(
             next(r['url'] for r in resultados if r['id'] == localizado.pk),
-            f'/?titulo={localizado.pk}',
+            f'{reverse("home")}?titulo={localizado.pk}',
         )
         self.assertTrue(sin_traduccion.pk in [resultado['id'] for resultado in resultados])
 
@@ -873,7 +910,7 @@ class HomeCarouselesTests(TestCase):
         response = self.client.get(reverse('home'))
         carrusel_popular = response.context['carruseles'][0]
 
-        self.assertEqual(carrusel_popular['etiqueta'], 'Más reproducidos')
+        self.assertEqual(carrusel_popular['etiqueta'], 'Populares')
         self.assertEqual(
             [titulo.pk for titulo in carrusel_popular['titulos']],
             [mas_visto.pk, menos_visto.pk],
@@ -917,13 +954,16 @@ class HomeCarouselesTests(TestCase):
         carruseles = respuesta.context['carruseles']
 
         self.assertEqual(len(carruseles), 1)
-        self.assertEqual(carruseles[0]['etiqueta'], 'Más reproducidos')
+        self.assertEqual(carruseles[0]['etiqueta'], 'Populares')
         self.assertTrue(carruseles[0]['mostrar_top'])
         self.assertEqual(len(carruseles[0]['titulos']), 10)
         self.assertEqual(carruseles[0]['titulos'][0].pk, primer_titulo.pk)
         self.assertContains(respuesta, 'aria-label="Puesto 1"')
         self.assertContains(respuesta, 'aria-label="Puesto 10"')
-        self.assertNotContains(respuesta, 'id="carousel-title-2"')
+        self.assertContains(respuesta, 'id="popular-list-title">Populares</h2>')
+        self.assertContains(respuesta, 'class="popular-grid"')
+        self.assertNotContains(respuesta, 'class="title-carousel"')
+        self.assertNotContains(respuesta, 'data-carousel-target="carousel-track')
 
     def test_usuario_autenticado_ve_banners_recientes_con_descripcion_y_elenco(self):
         anterior = self.crear_titulo(

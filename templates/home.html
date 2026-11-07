@@ -330,6 +330,58 @@
         text-shadow: 0 0.25rem 1rem rgba(0, 0, 0, 0.8);
     }
 
+    .popular-list {
+        max-width: 1500px;
+        margin: 0 auto;
+        padding: 2rem clamp(1rem, 4vw, 3rem) 4rem;
+    }
+
+    .popular-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr));
+        gap: 2.5rem 1rem;
+    }
+
+    .popular-card {
+        min-width: 0;
+    }
+
+    .popular-poster {
+        position: relative;
+        display: grid;
+        height: 150px;
+        place-items: center;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 0.5rem;
+        background: linear-gradient(145deg, #44232f, #171717 70%);
+    }
+
+    .popular-poster-image {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .popular-poster-mark {
+        color: rgba(255, 255, 255, 0.88);
+        font-size: 4rem;
+        font-weight: 800;
+    }
+
+    .popular-poster-rank {
+        position: absolute;
+        right: 0.5rem;
+        bottom: -0.25rem;
+        color: #fff;
+        font-size: 4rem;
+        font-weight: 900;
+        line-height: 1;
+        text-shadow: 0 0.25rem 1rem rgba(0, 0, 0, 0.9);
+    }
+
     .title-card-name {
         display: -webkit-box;
         overflow: hidden;
@@ -528,6 +580,32 @@
 
 {% if carruseles %}
 <section class="title-catalog" aria-label="Catálogo de títulos">
+    {% if not user.is_authenticated %}
+        {% with populares=carruseles.0 %}
+        <section class="popular-list" aria-labelledby="popular-list-title">
+            <h2 class="h3 fw-bold mb-4" id="popular-list-title">{{ populares.etiqueta }}</h2>
+            <div class="popular-grid">
+                {% for titulo in populares.titulos %}
+                <article class="popular-card">
+                    <div class="popular-poster">
+                        {% with imagen=titulo.imagenes_catalogo|first %}
+                            {% if imagen and imagen.imagen %}
+                                <img class="popular-poster-image" src="{{ imagen.imagen.url }}" alt="{{ titulo.nombre_mostrar }}" loading="lazy">
+                            {% else %}
+                                <span class="popular-poster-mark" aria-hidden="true">{{ titulo.nombre_mostrar|slice:":1"|upper }}</span>
+                            {% endif %}
+                        {% endwith %}
+                        <span class="popular-poster-rank" aria-label="Puesto {{ forloop.counter }}">{{ forloop.counter }}</span>
+                    </div>
+                    <div class="pt-2">
+                        <h3 class="title-card-name h6 fw-semibold mb-1">{{ titulo.nombre_mostrar }}</h3>
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+        </section>
+        {% endwith %}
+    {% else %}
     {% for carrusel in carruseles %}
     <section class="title-carousel" aria-labelledby="carousel-title-{{ forloop.counter }}">
         <div class="title-carousel-heading px-4">
@@ -602,6 +680,7 @@
         </div>
     </section>
     {% endfor %}
+    {% endif %}
 </section>
 {% endif %}
 

@@ -27,5 +27,7 @@ urlpatterns = [
     path('', include('streaming.urls')),
 ]
 
+handler404 = 'streaming.views.not_found_view'
+
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
