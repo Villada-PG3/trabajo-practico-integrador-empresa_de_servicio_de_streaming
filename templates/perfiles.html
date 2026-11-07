@@ -1,0 +1,107 @@
+{% extends 'base.html' %}
+
+{% block title %}Seleccionar perfil | RedFlix{% endblock %}
+
+{% block extra_css %}
+<style>
+    .profile-choice {
+        width: 150px;
+        color: #aaa;
+        transition: color .2s ease, transform .2s ease;
+    }
+
+    .profile-choice:hover,
+    .profile-choice:focus-within {
+        color: #fff;
+        transform: scale(1.05);
+    }
+
+    .profile-avatar {
+        width: 132px;
+        height: 132px;
+        object-fit: cover;
+        border: 3px solid transparent;
+        transition: border-color .2s ease;
+    }
+
+    .profile-choice:hover .profile-avatar,
+    .profile-choice:focus-within .profile-avatar {
+        border-color: #fff;
+    }
+
+    .profile-avatar-wrap {
+        position: relative;
+    }
+
+    .edit-profile {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        width: 34px;
+        height: 34px;
+        border: 0;
+        color: #fff;
+        background: rgba(0, 0, 0, .8);
+    }
+
+    .add-profile {
+        width: 132px;
+        height: 132px;
+        border: 0;
+        color: #777;
+        background: #222;
+        font-size: 4rem;
+        line-height: 1;
+    }
+
+    .add-profile:hover {
+        color: #fff;
+        background: #333;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="container text-center py-5">
+    <p class="text-white-50 mb-2">{{ user.email|default:user.username }}</p>
+    <h1 class="display-5 fw-semibold mb-5">¿Quién está viendo?</h1>
+    <div class="d-flex justify-content-center mb-4">
+        {% if editar_perfiles %}
+            <a href="{% url 'perfiles' %}" class="btn btn-outline-light">Listo</a>
+        {% else %}
+            <a href="{% url 'perfiles' %}?editar=1" class="btn btn-outline-light">Editar perfiles</a>
+        {% endif %}
+    </div>
+    <div class="d-flex flex-wrap justify-content-center align-items-start gap-4">
+        {% for perfil in perfiles %}
+            {% if editar_perfiles %}
+                <a href="{% url 'configurar_perfil' perfil.pk %}" class="profile-choice text-decoration-none">
+                    <span class="profile-avatar-wrap d-block mb-3">
+                        <img src="{{ perfil.imagen.imagen.url }}" alt="" class="profile-avatar rounded-3 d-block">
+                        <span class="edit-profile rounded-circle d-flex align-items-center justify-content-center" aria-label="Editar {{ perfil.nombre }}">
+                            <i class="bi bi-pencil-fill" aria-hidden="true"></i>
+                        </span>
+                    </span>
+                    <span class="d-block text-truncate">{{ perfil.nombre }}</span>
+                </a>
+            {% else %}
+                <form method="post" class="profile-choice">
+                    {% csrf_token %}
+                    <input type="hidden" name="perfil_id" value="{{ perfil.pk }}">
+                    <button type="submit" class="btn p-0 text-reset border-0 bg-transparent">
+                        <img src="{{ perfil.imagen.imagen.url }}" alt="" class="profile-avatar rounded-3 d-block mb-3">
+                        <span class="d-block text-truncate">{{ perfil.nombre }}</span>
+                    </button>
+                </form>
+            {% endif %}
+        {% endfor %}
+
+        {% if puede_agregar_perfil %}
+            <a href="{% url 'crear_perfil' %}" class="profile-choice text-decoration-none">
+                <span class="add-profile rounded-3 d-flex align-items-center justify-content-center mb-3">+</span>
+                <span class="d-block">Agregar perfil</span>
+            </a>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}

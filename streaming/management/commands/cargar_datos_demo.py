@@ -69,7 +69,14 @@ class Command(BaseCommand):
             nombre='Serie',
             defaults={'descripcion': 'Serie episódica'},
         )
-        nombres_categorias_edad = {'+16', '+13', '+10', '+7', 'ATP'}
+        edades_minimas = {
+            'ATP': 0,
+            '+7': 7,
+            '+10': 10,
+            '+13': 13,
+            '+16': 16,
+            '+18': 18,
+        }
         descripciones_categorias = {
             'Acción': 'Historias de acción',
             'Aventura': 'Historias de aventura',
@@ -86,31 +93,16 @@ class Command(BaseCommand):
             'Romance': 'Historias románticas',
             'Suspenso': 'Historias de suspenso',
             'Terror': 'Historias de terror',
-            '+16': 'Clasificación para mayores de 16 años.',
-            '+13': 'Clasificación para mayores de 13 años.',
-            '+10': 'Clasificación para mayores de 10 años.',
-            '+7': 'Clasificación para mayores de 7 años.',
-            'ATP': 'Apta para todo público.',
         }
         categoria_por_nombre = {}
         for nombre, descripcion in descripciones_categorias.items():
-            es_edad = nombre in nombres_categorias_edad
             categoria, _ = Categoria.objects.get_or_create(
                 nombre=nombre,
-                defaults={
-                    'descripcion': descripcion,
-                    'es_edad': es_edad,
-                },
+                defaults={'descripcion': descripcion},
             )
-            campos_actualizados = []
             if not categoria.descripcion:
                 categoria.descripcion = descripcion
-                campos_actualizados.append('descripcion')
-            if categoria.es_edad != es_edad:
-                categoria.es_edad = es_edad
-                campos_actualizados.append('es_edad')
-            if campos_actualizados:
-                categoria.save(update_fields=campos_actualizados)
+                categoria.save(update_fields=['descripcion'])
             categoria_por_nombre[nombre] = categoria
         actor, _ = Rol.objects.get_or_create(
             nombre='Actor',
@@ -151,6 +143,7 @@ class Command(BaseCommand):
                 'tipo_titulo': tipo_pelicula,
                 'pais': pais,
                 'fecha_estreno': date(2024, 5, 3),
+                'edad_minima': edades_minimas['ATP'],
             },
         )
         serie, _ = Titulo.objects.get_or_create(
@@ -160,6 +153,7 @@ class Command(BaseCommand):
                 'tipo_titulo': tipo_serie,
                 'pais': pais_origen,
                 'fecha_estreno': date(2023, 9, 15),
+                'edad_minima': edades_minimas['+13'],
             },
         )
         titulos_demo = [
@@ -311,6 +305,10 @@ class Command(BaseCommand):
              ('Aventura', 'Familia'), '+7', 2),
             ('Vidas paralelas', tipo_serie, pais_origen, date(2023, 12, 8),
              ('Drama', 'Ciencia ficción'), '+13', 4),
+            ('Noche sin retorno', tipo_pelicula, pais_origen, date(2026, 9, 18),
+             ('Crimen', 'Suspenso'), '+18', 0),
+            ('Habitación 404', tipo_serie, pais, date(2026, 6, 12),
+             ('Terror', 'Misterio'), '+18', 2),
         ]
         banner_assets = {
             'La ruta de prueba': 'demo/banners/ruta.svg',
@@ -330,40 +328,35 @@ class Command(BaseCommand):
                     'tipo_titulo': tipo,
                     'pais': origen,
                     'fecha_estreno': estreno,
+                    'edad_minima': edades_minimas[edad],
                 },
             )
             titulos_demo.append((titulo, categorias_titulo, edad, temporadas))
 
         contenido_principal = None
         for indice, (titulo, nombres_categoria, edad, temporadas) in enumerate(titulos_demo, start=1):
-            if titulo.nombre_original in banner_assets:
-                imagen_banner, _ = Imagen.objects.get_or_create(
-                    nombre=f'Banner: {titulo.nombre_original}',
-                    defaults={
-                        'imagen': banner_assets[titulo.nombre_original],
-                        'es_banner': True,
-                        'titulo': titulo,
-                    },
-                )
-                if not imagen_banner.es_banner or imagen_banner.imagen.name != banner_assets[titulo.nombre_original]:
-                    imagen_banner.imagen = banner_assets[titulo.nombre_original]
-                    imagen_banner.es_banner = True
-                    imagen_banner.save(update_fields=['imagen', 'es_banner'])
-
+            edad_minima = edades_minimas[edad]
+            if titulo.edad_minima != edad_minima:
+                titulo.edad_minima = edad_minima
+                titulo.save(update_fields=['edad_minima'])
             categorias_titulo = [
                 categoria_por_nombre[nombre]
-                for nombre in (*nombres_categoria, edad)
+                for nombre in nombres_categoria
             ]
             for categoria in categorias_titulo:
                 TituloCategoria.objects.get_or_create(titulo=titulo, categoria=categoria)
             TituloRolElenco.objects.get_or_create(titulo=titulo, rol_elenco=rol_actor)
             TituloRolElenco.objects.get_or_create(titulo=titulo, rol_elenco=rol_director)
-            IdiomaTitulo.objects.get_or_create(
+            idioma_titulo_espanol, _ = IdiomaTitulo.objects.get_or_create(
                 nombre='Audio en español',
                 titulo=titulo,
                 idioma=espanol,
                 defaults={'descripcion': 'Pista de audio ficticia.'},
             )
+            imagen_banner = banner_assets.get(titulo.nombre_original)
+            if imagen_banner and idioma_titulo_espanol.imagen.name != imagen_banner:
+                idioma_titulo_espanol.imagen = imagen_banner
+                idioma_titulo_espanol.save(update_fields=['imagen'])
             if titulo == serie:
                 IdiomaTitulo.objects.get_or_create(
                     nombre='Audio en inglés',
@@ -516,18 +509,26 @@ class Command(BaseCommand):
             nombre='Perfil Demo',
             defaults={'edad_max': 100},
         )
-        imagen, _ = Imagen.objects.get_or_create(
-            nombre='Avatar de demostración',
+        imagen_avatar, _ = Imagen.objects.get_or_create(
+            nombre='Avatar Dorado',
             defaults={
-                'imagen': 'demo/perfil-demo.svg',
-                'titulo': pelicula,
+                'imagen': 'demo/perfiles/avatar-dorado.svg',
             },
         )
+        if imagen_avatar.imagen.name != 'demo/perfiles/avatar-dorado.svg':
+            imagen_avatar.imagen = 'demo/perfiles/avatar-dorado.svg'
+            imagen_avatar.save(update_fields=['imagen'])
         perfil, _ = Perfil.objects.get_or_create(
             nombre='Perfil Demo',
             usuario=usuario,
-            defaults={'imagen': imagen, 'tipo_perfil': tipo_perfil},
+            defaults={
+                'imagen': imagen_avatar,
+                'tipo_perfil': tipo_perfil,
+            },
         )
+        if perfil.imagen_id != imagen_avatar.pk:
+            perfil.imagen = imagen_avatar
+            perfil.save(update_fields=['imagen'])
         perfil_titulo, _ = PerfilTitulo.objects.get_or_create(
             perfil=perfil,
             titulo=pelicula,

@@ -67,6 +67,60 @@
         max-width: 700px;
     }
 
+    .banner-list-toggle {
+        position: absolute;
+        z-index: 3;
+        top: clamp(5rem, 10vh, 8rem);
+        right: clamp(1.5rem, 6vw, 6rem);
+    }
+
+    .list-toggle-button {
+        display: grid;
+        width: 2.75rem;
+        height: 2.75rem;
+        place-items: center;
+        border: 1px solid rgba(255, 255, 255, 0.8);
+        border-radius: 50%;
+        background: rgba(15, 15, 15, 0.8);
+        color: #fff;
+        font-size: 1.25rem;
+        transition: background-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
+    }
+
+    .list-toggle-button:hover,
+    .list-toggle-button:focus-visible {
+        transform: scale(1.08);
+        background: #fff;
+        color: #141414;
+    }
+
+    .title-list-toggle {
+        position: absolute;
+        z-index: 4;
+        top: 0.65rem;
+        right: 0.65rem;
+    }
+
+    .title-list-toggle .list-toggle-button {
+        width: 2.4rem;
+        height: 2.4rem;
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    .title-card:hover .title-list-toggle .list-toggle-button,
+    .title-card:focus-within .title-list-toggle .list-toggle-button {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    @media (hover: none) {
+        .title-list-toggle .list-toggle-button {
+            opacity: 1;
+            pointer-events: auto;
+        }
+    }
+
     .featured-banner-title {
         max-width: 680px;
         font-size: clamp(2.5rem, 6vw, 5.5rem);
@@ -392,6 +446,19 @@
                 <p class="text-white-50 mb-0">{{ banner.titulo.tipo_titulo.nombre }}</p>
             </div>
         </div>
+        {% if user.is_authenticated and perfil_activo %}
+        <form method="post" action="{% url 'toggle_mi_lista' banner.titulo.pk %}"
+              class="banner-list-toggle" data-list-toggle data-title-id="{{ banner.titulo.pk }}"
+              data-title-name="{{ banner.titulo.nombre_original }}">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ url_actual }}">
+            <button type="submit" class="list-toggle-button"
+                    aria-label="{% if banner.titulo.en_mi_lista %}Quitar de{% else %}Agregar a{% endif %} Mi Lista: {{ banner.titulo.nombre_original }}"
+                    title="{% if banner.titulo.en_mi_lista %}Quitar de Mi Lista{% else %}Agregar a Mi Lista{% endif %}">
+                <i class="bi {% if banner.titulo.en_mi_lista %}bi-check-lg{% else %}bi-plus-lg{% endif %}" aria-hidden="true"></i>
+            </button>
+        </form>
+        {% endif %}
     </article>
     {% endfor %}
 
@@ -493,6 +560,19 @@
                     {% if carrusel.mostrar_top %}
                         <span class="title-poster-rank" aria-label="Puesto {{ forloop.counter }}">{{ forloop.counter }}</span>
                     {% endif %}
+                    {% if user.is_authenticated and perfil_activo %}
+                    <form method="post" action="{% url 'toggle_mi_lista' titulo.pk %}"
+                          class="title-list-toggle" data-list-toggle data-title-id="{{ titulo.pk }}"
+                          data-title-name="{{ titulo.nombre_original }}">
+                        {% csrf_token %}
+                        <input type="hidden" name="next" value="{{ url_actual }}">
+                        <button type="submit" class="list-toggle-button"
+                                aria-label="{% if titulo.en_mi_lista %}Quitar de{% else %}Agregar a{% endif %} Mi Lista: {{ titulo.nombre_original }}"
+                                title="{% if titulo.en_mi_lista %}Quitar de Mi Lista{% else %}Agregar a Mi Lista{% endif %}">
+                            <i class="bi {% if titulo.en_mi_lista %}bi-check-lg{% else %}bi-plus-lg{% endif %}" aria-hidden="true"></i>
+                        </button>
+                    </form>
+                    {% endif %}
                 </div>
                 <div class="pt-2">
                     <h3 class="title-card-name h6 fw-semibold mb-1">{{ titulo.nombre_original }}</h3>
@@ -506,7 +586,7 @@
                     </p>
                     {% if titulo.clasificacion_edad %}
                         <p class="small text-white-50 mb-1">
-                            Clasificación: <span class="badge rounded-pill text-bg-secondary">{{ titulo.clasificacion_edad.nombre }}</span>
+                            Clasificación: <span class="badge rounded-pill text-bg-secondary">{{ titulo.clasificacion_edad }}</span>
                         </p>
                     {% endif %}
                     {% if titulo.categorias_ordenadas %}
@@ -665,6 +745,63 @@
                 ? Math.min(start + visibleCount, maxStart)
                 : Math.max(start - visibleCount, 0);
             animateCarouselTo(track, targetStart * step);
+        });
+    });
+
+    document.querySelectorAll('[data-list-toggle]').forEach((form) => {
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const button = form.querySelector('button[type="submit"]');
+            if (!button || button.disabled) {
+                return;
+            }
+
+            const icon = button.querySelector('i');
+            const priorIconClass = icon.className;
+            button.disabled = true;
+            try {
+                const response = await fetch(form.action, {
+                    method: 'POST',
+                    body: new FormData(form),
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json',
+                    },
+                    credentials: 'same-origin',
+                });
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.error || 'No se pudo actualizar Mi Lista.');
+                }
+
+                const titleId = String(result.titulo_id);
+                document.querySelectorAll(`[data-list-toggle][data-title-id="${titleId}"]`).forEach((titleForm) => {
+                    const titleButton = titleForm.querySelector('button[type="submit"]');
+                    const titleIcon = titleButton?.querySelector('i');
+                    if (!titleButton || !titleIcon) {
+                        return;
+                    }
+
+                    const actionText = result.en_mi_lista ? 'Quitar de' : 'Agregar a';
+                    const titleName = titleForm.dataset.titleName;
+                    titleIcon.className = `bi ${result.en_mi_lista ? 'bi-check-lg' : 'bi-plus-lg'}`;
+                    titleButton.setAttribute('aria-label', `${actionText} Mi Lista: ${titleName}`);
+                    titleButton.title = `${actionText} Mi Lista`;
+                });
+            } catch (error) {
+                icon.className = priorIconClass;
+                let feedback = form.querySelector('[data-list-toggle-error]');
+                if (!feedback) {
+                    feedback = document.createElement('span');
+                    feedback.dataset.listToggleError = '';
+                    feedback.className = 'visually-hidden';
+                    feedback.setAttribute('role', 'alert');
+                    form.append(feedback);
+                }
+                feedback.textContent = error.message || 'No se pudo actualizar Mi Lista.';
+            } finally {
+                button.disabled = false;
+            }
         });
     });
 </script>

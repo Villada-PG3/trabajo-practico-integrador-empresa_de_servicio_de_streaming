@@ -23,7 +23,6 @@ class TipoTitulo(models.Model):
 class Categoria(models.Model):
     nombre = models.CharField(max_length=100)
     descripcion = models.TextField(blank=True, null=True)
-    es_edad = models.BooleanField(default=False)
 
     def __str__(self):
         return self.nombre
@@ -92,6 +91,7 @@ class Titulo(models.Model):
     pais = models.ForeignKey(Pais, on_delete=models.PROTECT, related_name='titulos')
     fecha_estreno = models.DateField(blank=True, null=True)
     fecha_baja = models.DateField(blank=True, null=True)
+    edad_minima = models.PositiveSmallIntegerField(blank=True, null=True)
 
     def __str__(self):
         return self.nombre_original
@@ -116,6 +116,7 @@ class TituloCategoria(models.Model):
 class IdiomaTitulo(models.Model):
     nombre = models.CharField(max_length=255)
     descripcion = models.TextField(blank=True, null=True)
+    imagen = models.FileField(upload_to='demo/banners/', blank=True)
     idioma = models.ForeignKey(Idioma, on_delete=models.CASCADE, related_name='idioma_titulos')
     titulo = models.ForeignKey(Titulo, on_delete=models.CASCADE, related_name='idioma_titulos')
 
@@ -145,6 +146,7 @@ class Subtitulo(models.Model):
 
 
 class IdiomaContenido(models.Model):
+    imagen = models.FileField(upload_to='demo/episodios/', blank=True)
     idioma = models.ForeignKey(Idioma, on_delete=models.CASCADE, related_name='idioma_contenidos')
     contenido = models.ForeignKey(Contenido, on_delete=models.CASCADE, related_name='idioma_contenidos')
 
@@ -300,8 +302,6 @@ class Imagen(Model):
     id = BigAutoField(primary_key=True)
     nombre = CharField(max_length=100)
     imagen = FileField() # hay que ver despues como se implementa
-    es_banner = models.BooleanField(default=False)
-    titulo = ForeignKey(Titulo, on_delete=CASCADE)
     
     def __str__(self):
         return self.nombre
@@ -330,6 +330,7 @@ class Perfil(Model):
     imagen = ForeignKey(Imagen, on_delete=CASCADE)
     tipo_perfil = ForeignKey(TipoPerfil, on_delete=CASCADE)
     usuario = ForeignKey(settings.AUTH_USER_MODEL, on_delete=CASCADE)
+    activo = BooleanField(default=True)
     
     def __str__(self):
         return self.nombre

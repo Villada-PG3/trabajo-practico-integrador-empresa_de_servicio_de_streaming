@@ -1,14 +1,48 @@
 from django.contrib import messages
 from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.contrib.auth.decorators import login_required
+from django.db import transaction
 from django.db.models import Count, ExpressionWrapper, F, FloatField, Prefetch, Q
+from django.db.models.functions import Lower
+from django.http import JsonResponse
 from django.shortcuts import redirect, render
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils import timezone
+from django.views.decorators.http import require_POST
 
-from .forms import LoginForm, RegistroForm, ReporteVentasFiltroForm
-from .models import Categoria, Contenido, Imagen, Plan, Precio, Suscripcion, Titulo
+from .forms import LoginForm, PerfilForm, RegistroForm, ReporteVentasFiltroForm
+from .models import (
+    Categoria,
+    Contenido,
+    IdiomaTitulo,
+    Plan,
+    Perfil,
+    PerfilTitulo,
+    Porver,
+    Precio,
+    Suscripcion,
+    Titulo,
+)
 
 LIMITE_TITULOS_CARRUSEL = 30
+LIMITE_PERFILES = 5
+SESION_PERFIL_ACTIVO = 'perfil_activo_id'
+
+
+def active_profile(request):
+    if not request.user.is_authenticated:
+        return {'perfil_activo': None}
+
+    return {'perfil_activo': get_active_profile(request)}
+
+
+def get_active_profile(request):
+    perfil_id = request.session.get(SESION_PERFIL_ACTIVO)
+    return Perfil.objects.select_related('imagen', 'tipo_perfil').filter(
+        pk=perfil_id,
+        usuario=request.user,
+        activo=True,
+    ).first()
 
 
 def ordenar_categorias_titulo(titulos, categoria_prioritaria=None):
@@ -31,23 +65,46 @@ def ordenar_categorias_titulo(titulos, categoria_prioritaria=None):
             relacion.categoria
             for relacion in titulo.titulo_categorias.all()
         ]
-        clasificaciones_edad = sorted(
-            (categoria for categoria in categorias if categoria.es_edad),
-            key=lambda categoria: categoria.nombre.casefold(),
-        )
-        titulo.clasificacion_edad = clasificaciones_edad[0] if clasificaciones_edad else None
         titulo.categorias_ordenadas = sorted(
-            (categoria for categoria in categorias if not categoria.es_edad),
+            categorias,
             key=lambda categoria: (
                 categoria_prioritaria is not None
                 and categoria.pk != categoria_prioritaria.pk,
                 categoria.nombre.casefold(),
             ),
         )
+        edad_minima = titulo.edad_minima
+        titulo.clasificacion_edad = (
+            'ATP' if edad_minima == 0 else f'+{edad_minima}'
+        ) if edad_minima is not None else None
+    return titulos
+
+
+def marcar_estado_mi_lista(titulos, titulos_guardados):
+    for titulo in titulos:
+        titulo.en_mi_lista = titulo.pk in titulos_guardados
     return titulos
 
 
 def home(request):
+    perfil_activo = None
+    if request.user.is_authenticated:
+        perfil_activo = get_active_profile(request)
+    titulos_guardados = set()
+    if perfil_activo is not None:
+        titulos_guardados = set(
+            Porver.objects.filter(
+                perfil_titulo__perfil=perfil_activo,
+                fecha_eliminado__isnull=True,
+            ).values_list('perfil_titulo__titulo_id', flat=True)
+        )
+
+    prefijos_tipos = {'series': 'ser', 'peliculas': 'pel'}
+    filtro_tipo = request.GET.get('tipo')
+    prefijo_tipo = prefijos_tipos.get(filtro_tipo)
+    if prefijo_tipo is None:
+        filtro_tipo = ''
+
     cantidad_populares = LIMITE_TITULOS_CARRUSEL if request.user.is_authenticated else 10
     suscripcion_actual = None
     if request.user.is_authenticated:
@@ -58,14 +115,9 @@ def home(request):
             .first()
         )
 
-    imagenes_banner = Prefetch(
-        'imagen_set',
-        queryset=Imagen.objects.filter(es_banner=True).order_by('id'),
-        to_attr='imagenes_banner',
-    )
     imagenes_catalogo = Prefetch(
-        'imagen_set',
-        queryset=Imagen.objects.order_by('id'),
+        'idioma_titulos',
+        queryset=IdiomaTitulo.objects.exclude(imagen='').order_by('idioma__nombre', 'id'),
         to_attr='imagenes_catalogo',
     )
     contenidos_catalogo = Prefetch(
@@ -74,9 +126,19 @@ def home(request):
         to_attr='contenidos_catalogo',
     )
     relaciones_elenco = 'titulo_rol_elencos__rol_elenco__elenco'
+    titulos_query = Titulo.objects.filter(contenidos__isnull=False)
+    if perfil_activo is not None:
+        titulos_query = titulos_query.filter(
+            edad_minima__lte=perfil_activo.tipo_perfil.edad_max,
+        )
+    elif request.user.is_authenticated:
+        titulos_query = titulos_query.none()
+    if prefijo_tipo:
+        titulos_query = titulos_query.filter(
+            tipo_titulo__nombre__istartswith=prefijo_tipo
+        )
     titulos_con_contenido = (
-        Titulo.objects.filter(contenidos__isnull=False)
-        .distinct()
+        titulos_query.distinct()
         .select_related('tipo_titulo')
         .annotate(
             temporadas=Count(
@@ -91,7 +153,6 @@ def home(request):
         .prefetch_related(
             'titulo_categorias__categoria',
             relaciones_elenco,
-            imagenes_banner,
             imagenes_catalogo,
             contenidos_catalogo,
         )
@@ -106,11 +167,22 @@ def home(request):
             output_field=FloatField(),
         )
     )
-    mas_reproducidos_query = (
-        Titulo.objects.filter(
-            contenidos__isnull=False,
-            contenidos__duracion_segundos__gt=0,
+    mas_reproducidos_query = Titulo.objects.filter(
+        contenidos__isnull=False,
+        contenidos__duracion_segundos__gt=0,
+    )
+    if perfil_activo is not None:
+        mas_reproducidos_query = mas_reproducidos_query.filter(
+            edad_minima__lte=perfil_activo.tipo_perfil.edad_max,
         )
+    elif request.user.is_authenticated:
+        mas_reproducidos_query = mas_reproducidos_query.none()
+    if prefijo_tipo:
+        mas_reproducidos_query = mas_reproducidos_query.filter(
+            tipo_titulo__nombre__istartswith=prefijo_tipo
+        )
+    mas_reproducidos_query = (
+        mas_reproducidos_query
         .annotate(
             reproducciones=Count(
                 'contenidos__perfil_contenidos',
@@ -130,14 +202,16 @@ def home(request):
         .prefetch_related(
             'titulo_categorias__categoria',
             relaciones_elenco,
-            imagenes_banner,
             imagenes_catalogo,
             contenidos_catalogo,
         )
         .order_by('-reproducciones', '-fecha_estreno', 'nombre_original')
     )
-    mas_reproducidos = ordenar_categorias_titulo(
-        list(mas_reproducidos_query[:cantidad_populares])
+    mas_reproducidos = marcar_estado_mi_lista(
+        ordenar_categorias_titulo(
+            list(mas_reproducidos_query[:cantidad_populares])
+        ),
+        titulos_guardados,
     )
     if mas_reproducidos:
         carruseles.append({
@@ -151,24 +225,38 @@ def home(request):
             ('Películas', 'pel'),
             ('Series', 'ser'),
         )
+        if prefijo_tipo:
+            tipos = tuple(
+                tipo for tipo in tipos if tipo[1] == prefijo_tipo
+            )
         for etiqueta, prefijo in tipos:
-            titulos = ordenar_categorias_titulo(list(
-                titulos_con_contenido.filter(
-                    tipo_titulo__nombre__istartswith=prefijo
-                )[:LIMITE_TITULOS_CARRUSEL]
-            ))
+            titulos = marcar_estado_mi_lista(
+                ordenar_categorias_titulo(list(
+                    titulos_con_contenido.filter(
+                        tipo_titulo__nombre__istartswith=prefijo
+                    )[:LIMITE_TITULOS_CARRUSEL]
+                )),
+                titulos_guardados,
+            )
             if titulos:
                 carruseles.append({'etiqueta': etiqueta, 'titulos': titulos})
 
         categorias = Categoria.objects.filter(
             titulo_categorias__titulo__contenidos__isnull=False
-        ).filter(es_edad=False).distinct().order_by('nombre')
+        ).distinct().order_by('nombre')
+        if prefijo_tipo:
+            categorias = categorias.filter(
+                titulo_categorias__titulo__tipo_titulo__nombre__istartswith=prefijo_tipo
+            )
         for categoria in categorias:
-            titulos = ordenar_categorias_titulo(list(
-                titulos_con_contenido.filter(
-                    titulo_categorias__categoria=categoria
-                )[:LIMITE_TITULOS_CARRUSEL]
-            ), categoria_prioritaria=categoria)
+            titulos = marcar_estado_mi_lista(
+                ordenar_categorias_titulo(list(
+                    titulos_con_contenido.filter(
+                        titulo_categorias__categoria=categoria
+                    )[:LIMITE_TITULOS_CARRUSEL]
+                ), categoria_prioritaria=categoria),
+                titulos_guardados,
+            )
             if titulos:
                 carruseles.append({'etiqueta': categoria.nombre, 'titulos': titulos})
 
@@ -176,8 +264,15 @@ def home(request):
     if request.user.is_authenticated:
         titulos_banner = titulos_con_contenido.filter(
             fecha_estreno__isnull=False,
-            imagen__es_banner=True,
-        ).distinct()[:5]
+            idioma_titulos__imagen__gt='',
+        )
+        if prefijo_tipo:
+            titulos_banner = titulos_banner.filter(
+                tipo_titulo__nombre__istartswith=prefijo_tipo
+            )
+        titulos_banner = titulos_banner.distinct().order_by(
+            '-fecha_estreno', 'nombre_original', 'pk'
+        )[:5]
         for titulo in titulos_banner:
             nombres_elenco = []
             for relacion in titulo.titulo_rol_elencos.all():
@@ -185,7 +280,8 @@ def home(request):
                 nombre = f'{persona.nombre} {persona.apellido}'
                 if nombre not in nombres_elenco:
                     nombres_elenco.append(nombre)
-            imagen_banner = titulo.imagenes_banner[0] if titulo.imagenes_banner else None
+            imagen_banner = titulo.imagenes_catalogo[0] if titulo.imagenes_catalogo else None
+            titulo.en_mi_lista = titulo.pk in titulos_guardados
             banners.append({
                 'titulo': titulo,
                 'elenco': nombres_elenco[:4],
@@ -196,12 +292,152 @@ def home(request):
         'suscripcion_actual': suscripcion_actual,
         'carruseles': carruseles,
         'banners': banners,
+        'filtro_tipo': filtro_tipo,
+        'url_actual': request.get_full_path(),
+    })
+
+
+@login_required
+@require_POST
+def toggle_mi_lista_view(request, titulo_id):
+    es_ajax = request.headers.get('x-requested-with') == 'XMLHttpRequest'
+    fecha_actual = timezone.localdate()
+    with transaction.atomic():
+        perfil_activo = Perfil.objects.select_for_update().filter(
+            pk=request.session.get(SESION_PERFIL_ACTIVO),
+            usuario=request.user,
+            activo=True,
+        ).select_related('tipo_perfil').first()
+        if perfil_activo is None:
+            if es_ajax:
+                return JsonResponse(
+                    {'error': 'Selecciona un perfil activo antes de modificar Mi Lista.'},
+                    status=400,
+                )
+            messages.error(request, 'Selecciona un perfil activo antes de modificar Mi Lista.')
+            return redirect('perfiles')
+
+        titulo = Titulo.objects.filter(
+            pk=titulo_id,
+            edad_minima__lte=perfil_activo.tipo_perfil.edad_max,
+        ).first()
+        if titulo is None:
+            if es_ajax:
+                return JsonResponse(
+                    {'error': 'No se encontró un título disponible para este perfil.'},
+                    status=404,
+                )
+            messages.error(request, 'No se encontró un título disponible para este perfil.')
+            return redirect('home')
+
+        perfil_titulo = PerfilTitulo.objects.filter(
+            perfil=perfil_activo,
+            titulo=titulo,
+        ).first()
+        titulos_activos = (
+            Porver.objects.select_for_update().filter(
+                perfil_titulo=perfil_titulo,
+                fecha_eliminado__isnull=True,
+            )
+            if perfil_titulo is not None
+            else Porver.objects.none()
+        )
+        if titulos_activos.exists():
+            titulos_activos.update(fecha_eliminado=fecha_actual)
+            en_mi_lista = False
+            mensaje = 'Se quitó el título de Mi Lista.'
+        else:
+            if not titulo.contenidos.exists():
+                if es_ajax:
+                    return JsonResponse(
+                        {'error': 'El título no está disponible para agregar a Mi Lista.'},
+                        status=404,
+                    )
+                messages.error(request, 'El título no está disponible para agregar a Mi Lista.')
+                return redirect('home')
+            if perfil_titulo is None:
+                perfil_titulo = PerfilTitulo.objects.create(
+                    perfil=perfil_activo,
+                    titulo=titulo,
+                )
+            Porver.objects.create(
+                perfil_titulo=perfil_titulo,
+                fecha_agregado=fecha_actual,
+            )
+            en_mi_lista = True
+            mensaje = 'Se agregó el título a Mi Lista.'
+
+    if es_ajax:
+        return JsonResponse({
+            'en_mi_lista': en_mi_lista,
+            'mensaje': mensaje,
+            'titulo_id': titulo.pk,
+        })
+
+    messages.success(request, mensaje)
+
+    url_siguiente = request.POST.get('next', '')
+    if url_has_allowed_host_and_scheme(
+        url_siguiente,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        return redirect(url_siguiente)
+    return redirect('home')
+
+
+@login_required
+def mi_lista_view(request):
+    perfil_id = request.session.get(SESION_PERFIL_ACTIVO)
+    perfil_activo = Perfil.objects.filter(
+        pk=perfil_id,
+        usuario=request.user,
+        activo=True,
+    ).select_related('tipo_perfil').first()
+    if perfil_activo is None:
+        return redirect('perfiles')
+
+    orden = request.GET.get('orden', 'antiguo')
+    ordenamientos = {
+        'antiguo': ('fecha_agregado', 'pk'),
+        'reciente': ('-fecha_agregado', '-pk'),
+        'alfabetico': (
+            Lower('perfil_titulo__titulo__nombre_original'),
+            'perfil_titulo__titulo__nombre_original',
+            'pk',
+        ),
+    }
+    if orden not in ordenamientos:
+        orden = 'antiguo'
+
+    imagenes_titulo = Prefetch(
+        'perfil_titulo__titulo__idioma_titulos',
+        queryset=IdiomaTitulo.objects.exclude(imagen='').order_by('idioma__nombre', 'id'),
+        to_attr='imagenes_mi_lista',
+    )
+    titulos_por_ver = (
+        Porver.objects.filter(
+            perfil_titulo__perfil=perfil_activo,
+            fecha_eliminado__isnull=True,
+            perfil_titulo__titulo__edad_minima__lte=perfil_activo.tipo_perfil.edad_max,
+        )
+        .select_related(
+            'perfil_titulo__titulo__tipo_titulo',
+            'perfil_titulo__perfil',
+        )
+        .prefetch_related(imagenes_titulo)
+        .order_by(*ordenamientos[orden])
+    )
+    return render(request, 'mi_lista.html', {
+        'titulos_por_ver': titulos_por_ver,
+        'orden': orden,
+        'pagina_mi_lista': True,
     })
 
 
 def login_view(request):
     if request.user.is_authenticated:
-        return redirect('home')
+        return redirect('perfiles')
 
     form = LoginForm(request.POST or None)
     if request.method == 'POST' and form.is_valid():
@@ -215,9 +451,9 @@ def login_view(request):
             login(request, user)
             if not form.data.get('remember_me'):
                 request.session.set_expiry(0)
-            if not Suscripcion.objects.filter(usuario=user, habilitado=True).exists():
-                return redirect('seleccionar_plan')
-            return redirect('home')
+            if Perfil.objects.filter(usuario=user, activo=True).exists():
+                return redirect('perfiles')
+            return redirect('crear_perfil')
         form.add_error(None, 'Correo electrónico o contraseña incorrectos.')
 
     return render(request, 'login.html', {'form': form})
@@ -231,15 +467,122 @@ def logout_view(request):
 
 def registro_view(request):
     if request.user.is_authenticated:
-        return redirect('seleccionar_plan')
+        return redirect('perfiles')
 
     initial = {'email': request.GET.get('email', '').strip().lower()}
     form = RegistroForm(request.POST or None, initial=initial)
     if request.method == 'POST' and form.is_valid():
         user = form.save()
         login(request, user)
-        return redirect('seleccionar_plan')
+        return redirect('crear_perfil')
     return render(request, 'registro.html', {'form': form})
+
+
+@login_required
+def perfiles_view(request):
+    perfiles = (
+        Perfil.objects.filter(usuario=request.user, activo=True)
+        .select_related('imagen')
+        .order_by('pk')
+    )
+    if not perfiles.exists():
+        return redirect('crear_perfil')
+
+    if request.method == 'POST':
+        perfil = perfiles.filter(pk=request.POST.get('perfil_id')).first()
+        if perfil is None:
+            messages.error(request, 'Selecciona un perfil válido de esta cuenta.')
+        else:
+            request.session[SESION_PERFIL_ACTIVO] = perfil.pk
+            return redirect('home')
+
+    return render(request, 'perfiles.html', {
+        'perfiles': perfiles,
+        'puede_agregar_perfil': perfiles.count() < LIMITE_PERFILES,
+        'editar_perfiles': request.GET.get('editar') == '1',
+        'pagina_perfiles': True,
+    })
+
+
+@login_required
+def crear_perfil_view(request):
+    cantidad_perfiles = Perfil.objects.filter(usuario=request.user, activo=True).count()
+    if cantidad_perfiles >= LIMITE_PERFILES:
+        messages.info(request, 'Esta cuenta ya tiene el máximo de cinco perfiles.')
+        return redirect('perfiles')
+
+    form = PerfilForm(request.POST or None)
+    if request.method == 'POST' and form.is_valid():
+        with transaction.atomic():
+            get_user_model().objects.select_for_update().get(pk=request.user.pk)
+            if Perfil.objects.filter(usuario=request.user, activo=True).count() >= LIMITE_PERFILES:
+                messages.error(request, 'Esta cuenta ya tiene el máximo de cinco perfiles.')
+                return redirect('perfiles')
+            perfil = form.save(request.user)
+
+        request.session[SESION_PERFIL_ACTIVO] = perfil.pk
+        return redirect('home')
+
+    return render(request, 'crear_perfil.html', {
+        'form': form,
+        'pagina_crear_perfil': True,
+        'primer_perfil': cantidad_perfiles == 0,
+    })
+
+
+@login_required
+def configurar_perfil_view(request, perfil_id):
+    perfil = Perfil.objects.filter(
+        pk=perfil_id,
+        usuario=request.user,
+        activo=True,
+    ).first()
+    if perfil is None:
+        messages.error(request, 'No se encontró un perfil activo de esta cuenta.')
+        return redirect('perfiles')
+
+    form = PerfilForm(request.POST or None, perfil=perfil)
+    if request.method == 'POST' and form.is_valid():
+        form.save(request.user, perfil=perfil)
+        messages.success(request, 'Se guardaron los cambios del perfil.')
+        return redirect('perfiles')
+
+    return render(request, 'crear_perfil.html', {
+        'form': form,
+        'pagina_perfiles': True,
+        'editar_perfil': perfil,
+        'primer_perfil': False,
+    })
+
+
+@login_required
+def desactivar_perfil_view(request, perfil_id):
+    perfil = Perfil.objects.filter(
+        pk=perfil_id,
+        usuario=request.user,
+        activo=True,
+    ).first()
+    if perfil is None:
+        messages.error(request, 'No se encontró un perfil activo de esta cuenta.')
+        return redirect('perfiles')
+
+    if request.method == 'POST':
+        perfiles_activos = Perfil.objects.filter(usuario=request.user, activo=True)
+        if perfiles_activos.count() <= 1:
+            messages.error(request, 'La cuenta debe conservar al menos un perfil activo.')
+            return redirect('perfiles')
+
+        perfil.activo = False
+        perfil.save(update_fields=['activo'])
+        if request.session.get(SESION_PERFIL_ACTIVO) == perfil.pk:
+            request.session.pop(SESION_PERFIL_ACTIVO, None)
+        messages.success(request, 'El perfil dejó de mostrarse. Sus datos se conservaron.')
+        return redirect('perfiles')
+
+    return render(request, 'confirmar_desactivar_perfil.html', {
+        'perfil': perfil,
+        'pagina_perfiles': True,
+    })
 
 
 @login_required

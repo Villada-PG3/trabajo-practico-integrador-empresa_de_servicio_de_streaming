@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+
+{% block title %}Mi Lista - RedFlix{% endblock %}
+
+{% block extra_css %}
+<style>
+    .my-list-page {
+        max-width: 1500px;
+        margin: 0 auto;
+        padding: 2rem clamp(1rem, 4vw, 3rem) 4rem;
+    }
+
+    .my-list-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr));
+        gap: 2.5rem 1rem;
+    }
+
+    .my-list-card {
+        position: relative;
+        min-width: 0;
+    }
+
+    .my-list-toggle {
+        position: absolute;
+        z-index: 2;
+        top: 0.65rem;
+        right: 0.65rem;
+    }
+
+    .my-list-toggle button {
+        display: grid;
+        width: 2.4rem;
+        height: 2.4rem;
+        place-items: center;
+        border: 1px solid rgba(255, 255, 255, 0.8);
+        border-radius: 50%;
+        background: rgba(15, 15, 15, 0.85);
+        color: #fff;
+        font-size: 1.15rem;
+    }
+
+    .my-list-toggle button:hover,
+    .my-list-toggle button:focus-visible {
+        background: #fff;
+        color: #141414;
+    }
+
+    .my-list-poster {
+        position: relative;
+        display: grid;
+        height: 150px;
+        place-items: center;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 0.5rem;
+        background: linear-gradient(145deg, #44232f, #171717 70%);
+    }
+
+    .my-list-poster img {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: center;
+    }
+
+    .my-list-poster-mark {
+        color: rgba(255, 255, 255, 0.88);
+        font-size: 4rem;
+        font-weight: 800;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="my-list-page">
+    <div class="d-flex flex-wrap align-items-end justify-content-between gap-3 mb-4">
+        <div>
+            <h1 class="h2 fw-bold mb-1">Mi Lista</h1>
+            <p class="text-white-50 mb-0">Títulos guardados en el perfil seleccionado.</p>
+        </div>
+        <form method="get" action="{% url 'mi_lista' %}" class="d-flex align-items-end gap-2">
+            <div>
+                <label for="orden-lista" class="form-label small mb-1">Ordenar por</label>
+                <select id="orden-lista" name="orden" class="form-select form-select-sm bg-dark text-white border-secondary">
+                    <option value="antiguo" {% if orden == 'antiguo' %}selected{% endif %}>Más antiguo</option>
+                    <option value="reciente" {% if orden == 'reciente' %}selected{% endif %}>Más reciente</option>
+                    <option value="alfabetico" {% if orden == 'alfabetico' %}selected{% endif %}>Orden alfabético</option>
+                </select>
+            </div>
+            <button type="submit" class="btn btn-netflix btn-sm">Ordenar</button>
+        </form>
+    </div>
+
+    {% if titulos_por_ver %}
+        <div class="my-list-grid">
+            {% for porver in titulos_por_ver %}
+                {% with titulo=porver.perfil_titulo.titulo imagen=porver.perfil_titulo.titulo.imagenes_mi_lista|first %}
+                <article class="my-list-card" data-my-list-card>
+                    <div class="my-list-poster">
+                        {% if imagen and imagen.imagen %}
+                            <img src="{{ imagen.imagen.url }}" alt="{{ titulo.nombre_original }}" loading="lazy">
+                        {% else %}
+                            <span class="my-list-poster-mark" aria-hidden="true">{{ titulo.nombre_original|slice:":1"|upper }}</span>
+                        {% endif %}
+                    </div>
+                    <form method="post" action="{% url 'toggle_mi_lista' titulo.pk %}"
+                          class="my-list-toggle" data-my-list-remove>
+                        {% csrf_token %}
+                        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                        <button type="submit"
+                                aria-label="Quitar de Mi Lista: {{ titulo.nombre_original }}"
+                                title="Quitar de Mi Lista">
+                            <i class="bi bi-check-lg" aria-hidden="true"></i>
+                        </button>
+                        <span class="visually-hidden" data-my-list-error role="alert"></span>
+                    </form>
+                    <div class="pt-2">
+                        <h2 class="h6 fw-semibold mb-1">{{ titulo.nombre_original }}</h2>
+                        <p class="small text-white-50 mb-1">{{ titulo.tipo_titulo.nombre }}</p>
+                        <p class="small text-white-50 mb-0">
+                            Agregado {{ porver.fecha_agregado|date:"d/m/Y" }}
+                        </p>
+                    </div>
+                </article>
+                {% endwith %}
+            {% endfor %}
+        </div>
+    {% else %}
+        <p class="text-white-50">Todavía no hay títulos en la lista de este perfil.</p>
+    {% endif %}
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.querySelectorAll('[data-my-list-remove]').forEach((form) => {
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const button = form.querySelector('button[type="submit"]');
+            if (!button || button.disabled) {
+                return;
+            }
+
+            button.disabled = true;
+            try {
+                const response = await fetch(form.action, {
+                    method: 'POST',
+                    body: new FormData(form),
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json',
+                    },
+                    credentials: 'same-origin',
+                });
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.error || 'No se pudo quitar el título de Mi Lista.');
+                }
+
+                if (!result.en_mi_lista) {
+                    const card = form.closest('[data-my-list-card]');
+                    card?.remove();
+                    if (!document.querySelector('[data-my-list-card]')) {
+                        const grid = document.querySelector('.my-list-grid');
+                        const emptyMessage = document.createElement('p');
+                        emptyMessage.className = 'text-white-50';
+                        emptyMessage.textContent = 'Busca que agregar para ver!.';
+                        grid?.replaceWith(emptyMessage);
+                    }
+                }
+            } catch (error) {
+                form.querySelector('[data-my-list-error]').textContent =
+                    error.message || 'No se pudo quitar el título de Mi Lista.';
+                button.disabled = false;
+            }
+        });
+    });
+</script>
+{% endblock %}

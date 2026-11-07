@@ -1,0 +1,91 @@
+{% extends 'base.html' %}
+
+{% block title %}{% if editar_perfil %}Configurar perfil{% else %}Crear perfil{% endif %} | RedFlix{% endblock %}
+
+{% block extra_css %}
+<style>
+    .avatar-option input {
+        position: absolute;
+        opacity: 0;
+    }
+
+    .avatar-option img {
+        width: 88px;
+        height: 88px;
+        border: 3px solid transparent;
+        transition: border-color .2s ease, transform .2s ease;
+    }
+
+    .avatar-option input:checked + label img,
+    .avatar-option input:focus-visible + label img {
+        border-color: #fff;
+        transform: scale(1.06);
+    }
+
+    .avatar-option label {
+        cursor: pointer;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="container py-5" style="max-width: 720px;">
+    <h1 class="display-6 fw-semibold mb-2">{% if editar_perfil %}Configurar perfil{% else %}Crear perfil{% endif %}</h1>
+    {% if editar_perfil %}
+        <p class="text-secondary mb-4">Actualiza el nombre, tipo o avatar de {{ editar_perfil.nombre }}.</p>
+    {% elif primer_perfil %}
+        <p class="text-secondary mb-4">Configura el primer perfil de tu cuenta para empezar a disfrutar de RedFlix.</p>
+    {% else %}
+        <p class="text-secondary mb-4">El nuevo perfil se agregará a tu cuenta.</p>
+    {% endif %}
+
+    <form method="post">
+        {% csrf_token %}
+        {% if form.non_field_errors %}
+            <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+        {% endif %}
+
+        <div class="mb-4">
+            <label for="{{ form.nombre.id_for_label }}" class="form-label">{{ form.nombre.label }}</label>
+            {{ form.nombre }}
+            {% for error in form.nombre.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+        </div>
+
+        <div class="mb-4">
+            <label for="{{ form.tipo_perfil.id_for_label }}" class="form-label">{{ form.tipo_perfil.label }}</label>
+            {{ form.tipo_perfil }}
+            {% for error in form.tipo_perfil.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+        </div>
+
+        <fieldset class="mb-4">
+            <legend class="form-label">{{ form.imagen.label }}</legend>
+            <div class="d-flex flex-wrap gap-3">
+                {% for imagen in form.fields.imagen.queryset %}
+                    <div class="avatar-option position-relative text-center">
+                        <input
+                            type="radio"
+                            name="{{ form.imagen.html_name }}"
+                            value="{{ imagen.pk }}"
+                            id="avatar-{{ forloop.counter }}"
+                            {% if form.imagen.value == imagen.pk|stringformat:"s" or not form.imagen.value and form.imagen.field.initial == imagen.pk %}checked{% endif %}
+                        >
+                        <label for="avatar-{{ forloop.counter }}">
+                            <img src="{{ imagen.imagen.url }}" alt="" class="rounded-circle d-block mb-2">
+                            <span class="small">{{ imagen.nombre }}</span>
+                        </label>
+                    </div>
+                {% endfor %}
+            </div>
+            {% for error in form.imagen.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+        </fieldset>
+
+        <button type="submit" class="btn btn-netflix px-4">{% if editar_perfil %}Guardar cambios{% else %}Guardar perfil{% endif %}</button>
+        {% if editar_perfil %}
+            <a href="{% url 'desactivar_perfil' editar_perfil.pk %}" class="btn btn-outline-danger ms-2">Borrar perfil</a>
+            <a href="{% url 'perfiles' %}?editar=1" class="btn btn-outline-light ms-2">Cancelar</a>
+        {% elif not primer_perfil %}
+            <a href="{% url 'perfiles' %}" class="btn btn-outline-light ms-2">Cancelar</a>
+        {% endif %}
+    </form>
+</section>
+{% endblock %}

@@ -4,7 +4,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from phonenumber_field.formfields import PhoneNumberField
 
-from .models import Idioma, Pais
+from .models import Idioma, Imagen, Pais, Perfil, TipoPerfil
 
 Usuario = get_user_model()
 
@@ -100,6 +100,72 @@ class LoginForm(forms.Form):
             'autocomplete': 'current-password',
         }),
     )
+
+
+class PerfilForm(forms.Form):
+    TIPOS_PERFIL = (
+        ('adulto', 'Adulto (desde 18 años)'),
+        ('adolescente', 'Adolescente (hasta 17 años)'),
+        ('infantil', 'Infantil (hasta 12 años)'),
+    )
+
+    nombre = forms.CharField(
+        label='Nombre del perfil',
+        max_length=100,
+        widget=forms.TextInput(attrs={
+            'class': 'form-control bg-secondary text-white border-0 py-2',
+            'placeholder': 'Por ejemplo, Alex',
+            'autocomplete': 'off',
+        }),
+    )
+    tipo_perfil = forms.ChoiceField(
+        label='Tipo de perfil',
+        choices=TIPOS_PERFIL,
+        widget=forms.Select(attrs={
+            'class': 'form-select bg-secondary text-white border-0 py-2',
+        }),
+    )
+    imagen = forms.ModelChoiceField(
+        label='Elige un avatar',
+        queryset=Imagen.objects.order_by('nombre'),
+        widget=forms.RadioSelect,
+    )
+
+    def __init__(self, *args, perfil=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if perfil is not None:
+            tipos_por_edad = {100: 'adulto', 17: 'adolescente', 12: 'infantil'}
+            self.initial.update({
+                'nombre': perfil.nombre,
+                'tipo_perfil': tipos_por_edad.get(perfil.tipo_perfil.edad_max, 'adulto'),
+                'imagen': perfil.imagen_id,
+            })
+        else:
+            primer_avatar = self.fields['imagen'].queryset.first()
+            if primer_avatar:
+                self.fields['imagen'].initial = primer_avatar.pk
+
+    def save(self, usuario, perfil=None):
+        if not self.is_valid():
+            raise ValueError('No se puede guardar el perfil con un formulario inválido.')
+
+        tipos_por_clave = {
+            'adulto': ('Adulto', 100),
+            'adolescente': ('Adolescente', 17),
+            'infantil': ('Infantil', 12),
+        }
+        nombre_tipo, edad_max = tipos_por_clave[self.cleaned_data['tipo_perfil']]
+        tipo_perfil, _ = TipoPerfil.objects.get_or_create(
+            nombre=nombre_tipo,
+            defaults={'edad_max': edad_max},
+        )
+        if perfil is None:
+            perfil = Perfil(usuario=usuario)
+        perfil.nombre = self.cleaned_data['nombre'].strip()
+        perfil.imagen = self.cleaned_data['imagen']
+        perfil.tipo_perfil = tipo_perfil
+        perfil.save()
+        return perfil
 
 
 class ReporteVentasFiltroForm(forms.Form):
