@@ -77,6 +77,119 @@
         footer a:hover {
             text-decoration: underline;
         }
+
+        .title-search-widget {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .title-search-form {
+            position: absolute;
+            top: 50%;
+            right: 0;
+            z-index: 20;
+            width: min(25rem, calc(100vw - 2rem));
+            padding: 0.25rem 0.35rem;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 999px;
+            background: rgba(18, 18, 18, 0.98);
+            box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.4);
+            transform: translateY(-50%);
+            transition: width 0.2s ease, border-color 0.2s ease;
+        }
+
+        .title-search-form:focus-within {
+            border-color: rgba(255, 255, 255, 0.7);
+        }
+
+        .title-search-form .form-control {
+            min-width: 0;
+            padding: 0.6rem 0.55rem;
+            border: 0 !important;
+            background: transparent !important;
+            color: #fff;
+            box-shadow: none !important;
+        }
+
+        .title-search-form .form-control::placeholder {
+            color: rgba(255, 255, 255, 0.58);
+        }
+
+        .title-search-action {
+            display: grid;
+            width: 2.4rem;
+            height: 2.4rem;
+            flex: 0 0 auto;
+            place-items: center;
+            border: 0;
+            border-radius: 50% !important;
+            color: #fff;
+        }
+
+        .title-search-action:hover,
+        .title-search-action:focus-visible {
+            background: rgba(255, 255, 255, 0.15);
+            color: #fff;
+        }
+
+        .live-search-page {
+            max-width: 1500px;
+            min-height: 60vh;
+            margin: 0 auto;
+            padding: 2rem clamp(1rem, 4vw, 3rem) 4rem;
+        }
+
+        .live-search-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr));
+            gap: 2.5rem 1rem;
+        }
+
+        .live-search-card {
+            min-width: 0;
+            color: #fff;
+            text-decoration: none;
+        }
+
+        .live-search-poster {
+            position: relative;
+            display: grid;
+            height: 150px;
+            place-items: center;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 0.5rem;
+            background: linear-gradient(145deg, #44232f, #171717 70%);
+            transition: transform 0.2s ease, border-color 0.2s ease;
+        }
+
+        .live-search-card:hover .live-search-poster,
+        .live-search-card:focus-visible .live-search-poster {
+            transform: translateY(-3px);
+            border-color: rgba(255, 255, 255, 0.55);
+        }
+
+        .live-search-poster img {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .live-search-poster-mark {
+            color: rgba(255, 255, 255, 0.88);
+            font-size: 4rem;
+            font-weight: 800;
+        }
+
+        @media (max-width: 575.98px) {
+            .title-search-form {
+                right: -2.75rem;
+                width: min(22rem, calc(100vw - 1.5rem));
+            }
+        }
     </style>
 
     {% block extra_css %}{% endblock %}
@@ -124,7 +237,29 @@
                         </ul>
 
                         <div class="d-flex align-items-center gap-3">
-                            <a href="#" class="text-light fs-5"><i class="bi bi-search"></i></a>
+                            <div class="title-search-widget">
+                                <button type="button" class="btn btn-link text-light fs-5 p-0"
+                                        data-title-search-open aria-label="Abrir búsqueda"
+                                        aria-expanded="false" aria-controls="title-search-form">
+                                    <i class="bi bi-search" aria-hidden="true"></i>
+                                </button>
+                                <form class="title-search-form d-none" id="title-search-form"
+                                      role="search" data-title-search-form
+                                      data-search-url="{% url 'buscar_titulos' %}">
+                                    <div class="d-flex align-items-center gap-1">
+                                        <span class="text-white-50 ps-2" aria-hidden="true">
+                                            <i class="bi bi-search"></i>
+                                        </span>
+                                        <input type="search" class="form-control"
+                                               placeholder="Buscar títulos" aria-label="Buscar títulos"
+                                               autocomplete="off" minlength="2" data-title-search-input>
+                                        <button class="btn title-search-action" type="button" data-title-search-close
+                                                aria-label="Cerrar búsqueda">
+                                            <i class="bi bi-x-lg" aria-hidden="true"></i>
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
                             <div class="dropdown">
                                 <button class="btn btn-secondary dropdown-toggle bg-transparent border-0 d-flex align-items-center gap-2" type="button" data-bs-toggle="dropdown">
                                     {% if perfil_activo %}
@@ -175,8 +310,20 @@
     {% endif %}
 
     <main>
+        <section class="live-search-page d-none" data-live-search-page aria-live="polite">
+            <div class="d-flex flex-wrap align-items-end justify-content-between gap-3 mb-4">
+                <div>
+                    <h1 class="h2 fw-bold mb-1">Resultados de búsqueda</h1>
+                    <p class="text-white-50 mb-0" data-live-search-summary></p>
+                </div>
+            </div>
+            <div class="live-search-grid" data-live-search-grid></div>
+            <p class="text-white-50 d-none" data-live-search-empty></p>
+        </section>
+        <div data-page-content>
         {% block content %}
         {% endblock %}
+        </div>
     </main>
 
     {% if not pagina_perfiles %}
@@ -219,7 +366,125 @@
     {% endif %}
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    
+    <script>
+        const titleSearchForm = document.querySelector('[data-title-search-form]');
+        if (titleSearchForm) {
+            const openButton = document.querySelector('[data-title-search-open]');
+            const closeButton = titleSearchForm.querySelector('[data-title-search-close]');
+            const input = titleSearchForm.querySelector('[data-title-search-input]');
+            const searchPage = document.querySelector('[data-live-search-page]');
+            const searchGrid = searchPage.querySelector('[data-live-search-grid]');
+            const searchSummary = searchPage.querySelector('[data-live-search-summary]');
+            const searchEmpty = searchPage.querySelector('[data-live-search-empty]');
+            const pageContent = document.querySelector('[data-page-content]');
+            let searchTimer;
+            let searchRequest;
+
+            const showPageContent = () => {
+                searchPage.classList.add('d-none');
+                pageContent.classList.remove('d-none');
+            };
+
+            const closeSearch = () => {
+                titleSearchForm.classList.add('d-none');
+                openButton.classList.remove('d-none');
+                openButton.setAttribute('aria-expanded', 'false');
+                input.value = '';
+                searchRequest?.abort();
+                showPageContent();
+            };
+
+            openButton.addEventListener('click', () => {
+                openButton.classList.add('d-none');
+                titleSearchForm.classList.remove('d-none');
+                openButton.setAttribute('aria-expanded', 'true');
+                input.focus();
+            });
+            closeButton.addEventListener('click', closeSearch);
+            titleSearchForm.addEventListener('submit', (event) => {
+                event.preventDefault();
+            });
+            document.addEventListener('keydown', (event) => {
+                if (event.key === 'Escape' && !titleSearchForm.classList.contains('d-none')) {
+                    closeSearch();
+                    openButton.focus();
+                }
+            });
+
+            input.addEventListener('input', () => {
+                window.clearTimeout(searchTimer);
+                searchRequest?.abort();
+                const query = input.value.trim();
+                if (query.length < 2) {
+                    showPageContent();
+                    return;
+                }
+
+                pageContent.classList.add('d-none');
+                searchPage.classList.remove('d-none');
+                searchSummary.textContent = `Buscando “${query}”…`;
+                searchGrid.replaceChildren();
+                searchEmpty.classList.add('d-none');
+                searchTimer = window.setTimeout(async () => {
+                    searchRequest = new AbortController();
+                    try {
+                        const url = new URL(titleSearchForm.dataset.searchUrl, window.location.origin);
+                        url.searchParams.set('q', query);
+                        const response = await fetch(url, {
+                            headers: { 'Accept': 'application/json' },
+                            credentials: 'same-origin',
+                            signal: searchRequest.signal,
+                        });
+                        const data = await response.json();
+                        if (!response.ok) {
+                            throw new Error(data.error || 'No se pudo completar la búsqueda.');
+                        }
+
+                        searchGrid.replaceChildren();
+                        data.resultados.forEach((resultado) => {
+                            const card = document.createElement('div');
+                            card.className = 'live-search-card';
+                            const poster = document.createElement('div');
+                            poster.className = 'live-search-poster';
+                            if (resultado.imagen) {
+                                const image = document.createElement('img');
+                                image.src = resultado.imagen;
+                                image.alt = '';
+                                image.loading = 'lazy';
+                                poster.append(image);
+                            } else {
+                                const mark = document.createElement('span');
+                                mark.className = 'live-search-poster-mark';
+                                mark.setAttribute('aria-hidden', 'true');
+                                mark.textContent = resultado.nombre.slice(0, 1).toUpperCase();
+                                poster.append(mark);
+                            }
+                            const nombre = document.createElement('span');
+                            nombre.className = 'd-block fw-semibold pt-2';
+                            nombre.textContent = resultado.nombre;
+                            const tipo = document.createElement('span');
+                            tipo.className = 'small text-white-50';
+                            tipo.textContent = resultado.tipo;
+                            card.append(poster, nombre, tipo);
+                            searchGrid.append(card);
+                        });
+                        searchSummary.textContent = `${data.resultados.length} título${data.resultados.length === 1 ? '' : 's'} para “${query}”`;
+                        searchEmpty.textContent = data.resultados.length
+                            ? ''
+                            : 'No se encontraron títulos coincidentes.';
+                        searchEmpty.classList.toggle('d-none', data.resultados.length > 0);
+                    } catch (error) {
+                        if (error.name !== 'AbortError') {
+                            searchGrid.replaceChildren();
+                            searchSummary.textContent = 'No se pudo completar la búsqueda.';
+                            searchEmpty.textContent = error.message || 'Intenta nuevamente.';
+                            searchEmpty.classList.remove('d-none');
+                        }
+                    }
+                }, 200);
+            });
+        }
+    </script>
     {% block extra_js %}{% endblock %}
 </body>
 </html>

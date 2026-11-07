@@ -101,9 +101,9 @@
                 <article class="my-list-card" data-my-list-card>
                     <div class="my-list-poster">
                         {% if imagen and imagen.imagen %}
-                            <img src="{{ imagen.imagen.url }}" alt="{{ titulo.nombre_original }}" loading="lazy">
+                            <img src="{{ imagen.imagen.url }}" alt="{{ titulo.nombre_mostrar }}" loading="lazy">
                         {% else %}
-                            <span class="my-list-poster-mark" aria-hidden="true">{{ titulo.nombre_original|slice:":1"|upper }}</span>
+                            <span class="my-list-poster-mark" aria-hidden="true">{{ titulo.nombre_mostrar|slice:":1"|upper }}</span>
                         {% endif %}
                     </div>
                     <form method="post" action="{% url 'toggle_mi_lista' titulo.pk %}"
@@ -111,14 +111,14 @@
                         {% csrf_token %}
                         <input type="hidden" name="next" value="{{ request.get_full_path }}">
                         <button type="submit"
-                                aria-label="Quitar de Mi Lista: {{ titulo.nombre_original }}"
+                                aria-label="Quitar de Mi Lista: {{ titulo.nombre_mostrar }}"
                                 title="Quitar de Mi Lista">
                             <i class="bi bi-check-lg" aria-hidden="true"></i>
                         </button>
                         <span class="visually-hidden" data-my-list-error role="alert"></span>
                     </form>
                     <div class="pt-2">
-                        <h2 class="h6 fw-semibold mb-1">{{ titulo.nombre_original }}</h2>
+                        <h2 class="h6 fw-semibold mb-1">{{ titulo.nombre_mostrar }}</h2>
                         <p class="small text-white-50 mb-1">{{ titulo.tipo_titulo.nombre }}</p>
                         <p class="small text-white-50 mb-0">
                             Agregado {{ porver.fecha_agregado|date:"d/m/Y" }}

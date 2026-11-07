@@ -347,23 +347,34 @@ class Command(BaseCommand):
                 TituloCategoria.objects.get_or_create(titulo=titulo, categoria=categoria)
             TituloRolElenco.objects.get_or_create(titulo=titulo, rol_elenco=rol_actor)
             TituloRolElenco.objects.get_or_create(titulo=titulo, rol_elenco=rol_director)
-            idioma_titulo_espanol, _ = IdiomaTitulo.objects.get_or_create(
-                nombre='Audio en español',
+            idioma_titulo_espanol = IdiomaTitulo.objects.filter(
                 titulo=titulo,
                 idioma=espanol,
-                defaults={'descripcion': 'Pista de audio ficticia.'},
-            )
+            ).order_by('pk').first()
+            if idioma_titulo_espanol is None:
+                idioma_titulo_espanol = IdiomaTitulo(
+                    titulo=titulo,
+                    idioma=espanol,
+                )
+            idioma_titulo_espanol.nombre = titulo.nombre_original
+            idioma_titulo_espanol.descripcion = titulo.descripcion_original or ''
             imagen_banner = banner_assets.get(titulo.nombre_original)
             if imagen_banner and idioma_titulo_espanol.imagen.name != imagen_banner:
                 idioma_titulo_espanol.imagen = imagen_banner
-                idioma_titulo_espanol.save(update_fields=['imagen'])
+            idioma_titulo_espanol.save()
             if titulo == serie:
-                IdiomaTitulo.objects.get_or_create(
-                    nombre='Audio en inglés',
+                idioma_titulo_ingles = IdiomaTitulo.objects.filter(
                     titulo=titulo,
                     idioma=ingles,
-                    defaults={'descripcion': 'Pista de audio ficticia.'},
-                )
+                ).order_by('pk').first()
+                if idioma_titulo_ingles is None:
+                    idioma_titulo_ingles = IdiomaTitulo(
+                        titulo=titulo,
+                        idioma=ingles,
+                    )
+                idioma_titulo_ingles.nombre = titulo.nombre_original
+                idioma_titulo_ingles.descripcion = titulo.descripcion_original or ''
+                idioma_titulo_ingles.save()
 
             contenido, _ = Contenido.objects.get_or_create(
                 nombre=f'{titulo.nombre_original} - contenido principal',

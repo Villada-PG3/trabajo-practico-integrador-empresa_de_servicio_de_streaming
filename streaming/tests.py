@@ -295,6 +295,53 @@ class HomeCarouselesTests(TestCase):
             self.assertNotIn(sin_contenido.pk, [titulo.pk for titulo in titulos])
             self.assertTrue(all(titulo.contenidos.exists() for titulo in titulos))
 
+    def test_home_usa_nombre_y_descripcion_del_idioma_del_usuario_con_fallbacks(self):
+        ingles = Idioma.objects.create(nombre='Inglés')
+        titulo_localizado = self.crear_titulo(
+            'Nombre original',
+            self.pelicula,
+            con_contenido=True,
+        )
+        titulo_localizado.descripcion_original = 'Descripción original'
+        titulo_localizado.fecha_estreno = date(2026, 1, 1)
+        titulo_localizado.save(update_fields=['descripcion_original', 'fecha_estreno'])
+        self.agregar_imagen_titulo(
+            titulo_localizado,
+            'Nombre localizado',
+            'demo/localizado.svg',
+        )
+        IdiomaTitulo.objects.filter(titulo=titulo_localizado).update(idioma=ingles)
+
+        titulo_parcial = self.crear_titulo(
+            'Nombre original alternativo',
+            self.pelicula,
+            con_contenido=True,
+        )
+        titulo_parcial.fecha_estreno = date(2026, 1, 2)
+        titulo_parcial.save(update_fields=['fecha_estreno'])
+        IdiomaTitulo.objects.create(
+            titulo=titulo_parcial,
+            idioma=ingles,
+            nombre='',
+            descripcion='Descripción localizada',
+            imagen='demo/parcial.svg',
+        )
+        usuario = Usuario.objects.create_user(
+            username='localizacion@example.com',
+            email='localizacion@example.com',
+            password='UnaClave-larga-2026!',
+            idioma=ingles,
+        )
+        self.autenticar_con_perfil(usuario)
+
+        respuesta = self.client.get(reverse('home'))
+
+        self.assertContains(respuesta, 'Nombre localizado')
+        self.assertContains(respuesta, 'Descripción original')
+        self.assertContains(respuesta, 'Nombre original alternativo')
+        self.assertContains(respuesta, 'Descripción localizada')
+        self.assertNotContains(respuesta, 'Nombre original</h1>')
+
     def test_idioma_contenido_puede_tener_imagen_de_episodio(self):
         titulo = self.crear_titulo('Serie con episodio', self.serie, con_contenido=True)
         contenido = titulo.contenidos.get()
@@ -472,10 +519,10 @@ class HomeCarouselesTests(TestCase):
             'next': '/?tipo=peliculas',
         })
 
-        self.assertContains(respuesta_home, f'Agregar a Mi Lista: {titulo.nombre_original}')
+        self.assertContains(respuesta_home, 'Agregar a Mi Lista: Banner para guardar')
         self.assertEqual(respuesta_agregar.status_code, 302)
         self.assertEqual(respuesta_agregar.url, '/?tipo=peliculas')
-        self.assertContains(respuesta_guardado, f'Quitar de Mi Lista: {titulo.nombre_original}')
+        self.assertContains(respuesta_guardado, 'Quitar de Mi Lista: Banner para guardar')
         self.assertEqual(respuesta_quitar.url, '/?tipo=peliculas')
         self.assertEqual(
             Porver.objects.filter(
@@ -540,6 +587,157 @@ class HomeCarouselesTests(TestCase):
         self.assertFalse(
             PerfilTitulo.objects.filter(perfil=perfil, titulo=titulo).exists()
         )
+
+    def test_busqueda_coincide_con_nombre_mostrado_y_respeta_edad(self):
+        ingles = Idioma.objects.create(nombre='Inglés')
+        localizado = self.crear_titulo(
+            'Original no visible',
+            self.pelicula,
+            con_contenido=True,
+        )
+        IdiomaTitulo.objects.create(
+            titulo=localizado,
+            idioma=ingles,
+            nombre='The Northern Lights',
+            descripcion='',
+        )
+        sin_traduccion = self.crear_titulo(
+            'Northern Stories',
+            self.serie,
+            con_contenido=True,
+        )
+        edad_restringida = self.crear_titulo(
+            'Northern Adults',
+            self.pelicula,
+            con_contenido=True,
+            edad_minima=18,
+        )
+        usuario = Usuario.objects.create_user(
+            username='busqueda@example.com',
+            email='busqueda@example.com',
+            password='UnaClave-larga-2026!',
+            idioma=ingles,
+        )
+        self.autenticar_con_perfil(usuario, edad_max=17)
+
+        respuesta = self.client.get(reverse('buscar_titulos'), {'q': 'northern'})
+
+        self.assertEqual(respuesta.status_code, 200)
+        resultados = respuesta.json()['resultados']
+        self.assertEqual(
+            [(resultado['nombre'], resultado['tipo']) for resultado in resultados],
+            [('Northern Stories', 'Serie'), ('The Northern Lights', 'Película')],
+        )
+        self.assertNotIn(
+            'Original no visible',
+            [resultado['nombre'] for resultado in resultados],
+        )
+        self.assertNotIn(
+            edad_restringida.pk,
+            [resultado['id'] for resultado in resultados],
+        )
+        self.assertEqual(
+            next(r['url'] for r in resultados if r['id'] == localizado.pk),
+            f'/?titulo={localizado.pk}',
+        )
+        self.assertTrue(sin_traduccion.pk in [resultado['id'] for resultado in resultados])
+
+    def test_busqueda_requiere_perfil_activo(self):
+        usuario = Usuario.objects.create_user(
+            username='busqueda-sin-perfil@example.com',
+            email='busqueda-sin-perfil@example.com',
+            password='UnaClave-larga-2026!',
+        )
+        self.client.force_login(usuario)
+
+        respuesta = self.client.get(reverse('buscar_titulos'), {'q': 'test'})
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertIn('error', respuesta.json())
+
+    def test_busqueda_sin_idioma_respeta_el_fallback_del_nombre_mostrado(self):
+        primero = Idioma.objects.create(nombre='A idioma')
+        segundo = Idioma.objects.create(nombre='B idioma')
+        titulo = self.crear_titulo(
+            'Nombre original visible',
+            self.pelicula,
+            con_contenido=True,
+        )
+        IdiomaTitulo.objects.create(
+            titulo=titulo,
+            idioma=primero,
+            nombre='',
+            descripcion='Descripción disponible',
+        )
+        IdiomaTitulo.objects.create(
+            titulo=titulo,
+            idioma=segundo,
+            nombre='Nombre traducido no visible',
+            descripcion='',
+        )
+        usuario = Usuario.objects.create_user(
+            username='busqueda-sin-idioma@example.com',
+            email='busqueda-sin-idioma@example.com',
+            password='UnaClave-larga-2026!',
+        )
+        self.autenticar_con_perfil(usuario)
+
+        respuesta_traducido = self.client.get(
+            reverse('buscar_titulos'),
+            {'q': 'traducido'},
+        )
+        respuesta_original = self.client.get(
+            reverse('buscar_titulos'),
+            {'q': 'original visible'},
+        )
+
+        self.assertEqual(respuesta_traducido.json()['resultados'], [])
+        self.assertEqual(
+            [resultado['nombre'] for resultado in respuesta_original.json()['resultados']],
+            ['Nombre original visible'],
+        )
+
+    def test_busqueda_devuelve_todos_los_resultados_en_orden_alfabetico(self):
+        usuario = Usuario.objects.create_user(
+            username='busqueda-completa@example.com',
+            email='busqueda-completa@example.com',
+            password='UnaClave-larga-2026!',
+        )
+        self.autenticar_con_perfil(usuario)
+        nombres = [f'Coincidencia {indice:02}' for indice in range(12)]
+        for nombre in reversed(nombres):
+            self.crear_titulo(nombre, self.pelicula, con_contenido=True)
+
+        respuesta = self.client.get(reverse('buscar_titulos'), {'q': 'coincidencia'})
+
+        self.assertEqual(
+            [resultado['nombre'] for resultado in respuesta.json()['resultados']],
+            nombres,
+        )
+
+    def test_home_filtra_por_titulo_seleccionado_desde_busqueda(self):
+        resultado = self.crear_titulo(
+            'Resultado específico',
+            self.pelicula,
+            con_contenido=True,
+        )
+        otro = self.crear_titulo('Otro resultado', self.serie, con_contenido=True)
+        usuario = Usuario.objects.create_user(
+            username='click-busqueda@example.com',
+            email='click-busqueda@example.com',
+            password='UnaClave-larga-2026!',
+        )
+        self.autenticar_con_perfil(usuario)
+
+        respuesta = self.client.get(reverse('home'), {'titulo': resultado.pk})
+
+        titulos = {
+            titulo.pk
+            for carrusel in respuesta.context['carruseles']
+            for titulo in carrusel['titulos']
+        }
+        self.assertEqual(titulos, {resultado.pk})
+        self.assertNotIn(otro.pk, titulos)
 
     def test_inicio_autenticado_sin_perfil_activo_no_muestra_titulos(self):
         usuario = Usuario.objects.create_user(
@@ -1030,6 +1228,32 @@ class MiListaTests(TestCase):
             ['Alfombra roja', 'Bruma', 'Zorro azul'],
         )
 
+    def test_lista_muestra_el_nombre_localizado_del_idioma_del_usuario(self):
+        ingles = Idioma.objects.create(nombre='Inglés')
+        titulo = self.agregar_a_lista(
+            self.crear_perfil(self.usuario, 'Principal'),
+            'Nombre original',
+            date(2026, 1, 1),
+        )
+        IdiomaTitulo.objects.create(
+            titulo=titulo,
+            idioma=ingles,
+            nombre='Localized title',
+            descripcion='Localized description',
+        )
+        self.usuario.idioma = ingles
+        self.usuario.save(update_fields=['idioma'])
+        self.client.force_login(self.usuario)
+        perfil = Perfil.objects.get(nombre='Principal')
+        session = self.client.session
+        session['perfil_activo_id'] = perfil.pk
+        session.save()
+
+        respuesta = self.client.get(reverse('mi_lista'))
+
+        self.assertContains(respuesta, 'Localized title')
+        self.assertNotContains(respuesta, '<h2 class="h6 fw-semibold mb-1">Nombre original</h2>')
+
     def test_mi_lista_requiere_autenticacion(self):
         respuesta = self.client.get(reverse('mi_lista'))
 
@@ -1250,6 +1474,11 @@ class CargarDatosDemoTests(TestCase):
         self.assertEqual(Titulo.objects.get(nombre_original='Misterios de muestra').edad_minima, 13)
         self.assertEqual(Titulo.objects.get(nombre_original='Noche sin retorno').edad_minima, 18)
         self.assertEqual(Titulo.objects.get(nombre_original='Habitación 404').edad_minima, 18)
+        ruta_demo = Titulo.objects.get(nombre_original='La ruta de prueba')
+        self.assertEqual(
+            IdiomaTitulo.objects.get(titulo=ruta_demo, idioma__nombre='Español').nombre,
+            ruta_demo.nombre_original,
+        )
         self.assertTrue(Imagen.objects.filter(nombre='Avatar Dorado').exists())
         self.assertTrue(
             IdiomaTitulo.objects.filter(imagen__startswith='demo/banners/').exists()

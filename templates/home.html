@@ -436,9 +436,9 @@
                 <p class="text-uppercase text-danger fw-bold mb-2">
                     Novedad{% if banner.titulo.fecha_estreno %} · {{ banner.titulo.fecha_estreno|date:"Y" }}{% endif %}
                 </p>
-                <h1 class="featured-banner-title mb-3">{{ banner.titulo.nombre_original }}</h1>
+                <h1 class="featured-banner-title mb-3">{{ banner.titulo.nombre_mostrar }}</h1>
                 <p class="featured-banner-description fs-5 mb-3">
-                    {{ banner.titulo.descripcion_original|default:"Descubre una nueva historia para disfrutar en nuestra plataforma." }}
+                    {{ banner.titulo.descripcion_mostrar|default:"Descubre una nueva historia para disfrutar en nuestra plataforma." }}
                 </p>
                 {% if banner.elenco %}
                     <p class="mb-3"><span class="fw-semibold">Elenco:</span> {{ banner.elenco|join:", " }}</p>
@@ -449,11 +449,11 @@
         {% if user.is_authenticated and perfil_activo %}
         <form method="post" action="{% url 'toggle_mi_lista' banner.titulo.pk %}"
               class="banner-list-toggle" data-list-toggle data-title-id="{{ banner.titulo.pk }}"
-              data-title-name="{{ banner.titulo.nombre_original }}">
+              data-title-name="{{ banner.titulo.nombre_mostrar }}">
             {% csrf_token %}
             <input type="hidden" name="next" value="{{ url_actual }}">
             <button type="submit" class="list-toggle-button"
-                    aria-label="{% if banner.titulo.en_mi_lista %}Quitar de{% else %}Agregar a{% endif %} Mi Lista: {{ banner.titulo.nombre_original }}"
+                    aria-label="{% if banner.titulo.en_mi_lista %}Quitar de{% else %}Agregar a{% endif %} Mi Lista: {{ banner.titulo.nombre_mostrar }}"
                     title="{% if banner.titulo.en_mi_lista %}Quitar de Mi Lista{% else %}Agregar a Mi Lista{% endif %}">
                 <i class="bi {% if banner.titulo.en_mi_lista %}bi-check-lg{% else %}bi-plus-lg{% endif %}" aria-hidden="true"></i>
             </button>
@@ -551,9 +551,9 @@
                 <div class="title-poster">
                     {% with imagen=titulo.imagenes_catalogo|first %}
                         {% if imagen and imagen.imagen %}
-                            <img class="title-poster-image" src="{{ imagen.imagen.url }}" alt="{{ titulo.nombre_original }}" loading="lazy">
+                            <img class="title-poster-image" src="{{ imagen.imagen.url }}" alt="{{ titulo.nombre_mostrar }}" loading="lazy">
                         {% else %}
-                    <span class="title-poster-mark" aria-hidden="true">{{ titulo.nombre_original|slice:":1"|upper }}</span>
+                    <span class="title-poster-mark" aria-hidden="true">{{ titulo.nombre_mostrar|slice:":1"|upper }}</span>
                         {% endif %}
                     {% endwith %}
                     <span class="small fw-semibold text-white-50">{{ titulo.fecha_estreno|date:"Y" }}</span>
@@ -563,11 +563,11 @@
                     {% if user.is_authenticated and perfil_activo %}
                     <form method="post" action="{% url 'toggle_mi_lista' titulo.pk %}"
                           class="title-list-toggle" data-list-toggle data-title-id="{{ titulo.pk }}"
-                          data-title-name="{{ titulo.nombre_original }}">
+                          data-title-name="{{ titulo.nombre_mostrar }}">
                         {% csrf_token %}
                         <input type="hidden" name="next" value="{{ url_actual }}">
                         <button type="submit" class="list-toggle-button"
-                                aria-label="{% if titulo.en_mi_lista %}Quitar de{% else %}Agregar a{% endif %} Mi Lista: {{ titulo.nombre_original }}"
+                                aria-label="{% if titulo.en_mi_lista %}Quitar de{% else %}Agregar a{% endif %} Mi Lista: {{ titulo.nombre_mostrar }}"
                                 title="{% if titulo.en_mi_lista %}Quitar de Mi Lista{% else %}Agregar a Mi Lista{% endif %}">
                             <i class="bi {% if titulo.en_mi_lista %}bi-check-lg{% else %}bi-plus-lg{% endif %}" aria-hidden="true"></i>
                         </button>
@@ -575,7 +575,7 @@
                     {% endif %}
                 </div>
                 <div class="pt-2">
-                    <h3 class="title-card-name h6 fw-semibold mb-1">{{ titulo.nombre_original }}</h3>
+                    <h3 class="title-card-name h6 fw-semibold mb-1">{{ titulo.nombre_mostrar }}</h3>
                     <p class="title-card-type small text-white-50 mb-1">
                         {{ titulo.tipo_titulo.nombre }}
                         {% if titulo.duracion_formateada %}

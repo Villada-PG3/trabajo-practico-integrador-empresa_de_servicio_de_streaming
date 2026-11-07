@@ -1,14 +1,30 @@
 from django.contrib import messages
 from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.contrib.auth.decorators import login_required
+from django.core.files.storage import default_storage
 from django.db import transaction
-from django.db.models import Count, ExpressionWrapper, F, FloatField, Prefetch, Q
-from django.db.models.functions import Lower
+from django.db.models import (
+    Case,
+    CharField,
+    Count,
+    ExpressionWrapper,
+    F,
+    FloatField,
+    IntegerField,
+    OuterRef,
+    Prefetch,
+    Q,
+    Subquery,
+    Value,
+    When,
+)
+from django.db.models.functions import Coalesce, NullIf, Trim
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils import timezone
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 
 from .forms import LoginForm, PerfilForm, RegistroForm, ReporteVentasFiltroForm
 from .models import (
@@ -86,6 +102,54 @@ def marcar_estado_mi_lista(titulos, titulos_guardados):
     return titulos
 
 
+def asignar_textos_titulo(titulos, idioma_id=None):
+    for titulo in titulos:
+        idiomas_titulo = getattr(titulo, 'idiomas_texto', [])
+        idioma_preferido = next(
+            (
+                idioma_titulo for idioma_titulo in idiomas_titulo
+                if idioma_titulo.idioma_id == idioma_id
+            ),
+            None,
+        ) if idioma_id is not None else next(
+            (
+                idioma_titulo for idioma_titulo in idiomas_titulo
+                if idioma_titulo.nombre.strip() or (idioma_titulo.descripcion or '').strip()
+            ),
+            None,
+        )
+        titulo.nombre_mostrar = (
+            idioma_preferido.nombre.strip()
+            if idioma_preferido and idioma_preferido.nombre.strip()
+            else titulo.nombre_original
+        )
+        titulo.descripcion_mostrar = (
+            (idioma_preferido.descripcion or '').strip()
+            if idioma_preferido and (idioma_preferido.descripcion or '').strip()
+            else titulo.descripcion_original
+        )
+    return titulos
+
+
+def nombre_titulo_para_busqueda(idioma_id):
+    textos = IdiomaTitulo.objects.filter(titulo_id=OuterRef('pk'))
+    if idioma_id is not None:
+        textos = textos.filter(idioma_id=idioma_id).order_by('pk')
+    else:
+        textos = textos.filter(
+            Q(nombre__gt='') | Q(descripcion__gt=''),
+        ).order_by('idioma__nombre', 'pk')
+    nombre_localizado = NullIf(
+        Trim(Subquery(textos.values('nombre')[:1])),
+        Value(''),
+    )
+    return Coalesce(
+        nombre_localizado,
+        F('nombre_original'),
+        output_field=CharField(),
+    )
+
+
 def home(request):
     perfil_activo = None
     if request.user.is_authenticated:
@@ -120,6 +184,11 @@ def home(request):
         queryset=IdiomaTitulo.objects.exclude(imagen='').order_by('idioma__nombre', 'id'),
         to_attr='imagenes_catalogo',
     )
+    textos_catalogo = Prefetch(
+        'idioma_titulos',
+        queryset=IdiomaTitulo.objects.select_related('idioma').order_by('idioma__nombre', 'id'),
+        to_attr='idiomas_texto',
+    )
     contenidos_catalogo = Prefetch(
         'contenidos',
         queryset=Contenido.objects.order_by('id'),
@@ -127,6 +196,13 @@ def home(request):
     )
     relaciones_elenco = 'titulo_rol_elencos__rol_elenco__elenco'
     titulos_query = Titulo.objects.filter(contenidos__isnull=False)
+    titulo_seleccionado = request.GET.get('titulo')
+    if titulo_seleccionado is not None:
+        try:
+            titulo_seleccionado = int(titulo_seleccionado)
+        except (TypeError, ValueError):
+            titulo_seleccionado = -1
+        titulos_query = titulos_query.filter(pk=titulo_seleccionado)
     if perfil_activo is not None:
         titulos_query = titulos_query.filter(
             edad_minima__lte=perfil_activo.tipo_perfil.edad_max,
@@ -154,6 +230,7 @@ def home(request):
             'titulo_categorias__categoria',
             relaciones_elenco,
             imagenes_catalogo,
+            textos_catalogo,
             contenidos_catalogo,
         )
         .order_by('-fecha_estreno', 'nombre_original')
@@ -171,6 +248,10 @@ def home(request):
         contenidos__isnull=False,
         contenidos__duracion_segundos__gt=0,
     )
+    if titulo_seleccionado is not None:
+        mas_reproducidos_query = mas_reproducidos_query.filter(
+            pk=titulo_seleccionado
+        )
     if perfil_activo is not None:
         mas_reproducidos_query = mas_reproducidos_query.filter(
             edad_minima__lte=perfil_activo.tipo_perfil.edad_max,
@@ -203,6 +284,7 @@ def home(request):
             'titulo_categorias__categoria',
             relaciones_elenco,
             imagenes_catalogo,
+            textos_catalogo,
             contenidos_catalogo,
         )
         .order_by('-reproducciones', '-fecha_estreno', 'nombre_original')
@@ -213,6 +295,7 @@ def home(request):
         ),
         titulos_guardados,
     )
+    asignar_textos_titulo(mas_reproducidos, getattr(request.user, 'idioma_id', None))
     if mas_reproducidos:
         carruseles.append({
             'etiqueta': 'Más reproducidos',
@@ -238,6 +321,7 @@ def home(request):
                 )),
                 titulos_guardados,
             )
+            asignar_textos_titulo(titulos, getattr(request.user, 'idioma_id', None))
             if titulos:
                 carruseles.append({'etiqueta': etiqueta, 'titulos': titulos})
 
@@ -257,6 +341,7 @@ def home(request):
                 ), categoria_prioritaria=categoria),
                 titulos_guardados,
             )
+            asignar_textos_titulo(titulos, getattr(request.user, 'idioma_id', None))
             if titulos:
                 carruseles.append({'etiqueta': categoria.nombre, 'titulos': titulos})
 
@@ -282,6 +367,7 @@ def home(request):
                     nombres_elenco.append(nombre)
             imagen_banner = titulo.imagenes_catalogo[0] if titulo.imagenes_catalogo else None
             titulo.en_mi_lista = titulo.pk in titulos_guardados
+            asignar_textos_titulo([titulo], getattr(request.user, 'idioma_id', None))
             banners.append({
                 'titulo': titulo,
                 'elenco': nombres_elenco[:4],
@@ -294,6 +380,66 @@ def home(request):
         'banners': banners,
         'filtro_tipo': filtro_tipo,
         'url_actual': request.get_full_path(),
+    })
+
+
+@login_required
+@require_GET
+def buscar_titulos_view(request):
+    consulta = request.GET.get('q', '').strip()
+    if len(consulta) < 2:
+        return JsonResponse({'resultados': []})
+
+    perfil_activo = get_active_profile(request)
+    if perfil_activo is None:
+        return JsonResponse(
+            {'error': 'Selecciona un perfil activo para buscar títulos.'},
+            status=400,
+        )
+
+    idioma_id = request.user.idioma_id
+    nombre_titulo = nombre_titulo_para_busqueda(idioma_id)
+    imagenes = IdiomaTitulo.objects.filter(
+        titulo_id=OuterRef('pk'),
+        imagen__gt='',
+    )
+    if idioma_id is not None:
+        imagenes = imagenes.order_by(
+            Case(
+                When(idioma_id=idioma_id, then=Value(0)),
+                default=Value(1),
+                output_field=IntegerField(),
+            ),
+            'idioma__nombre',
+            'pk',
+        )
+    else:
+        imagenes = imagenes.order_by('idioma__nombre', 'pk')
+    titulos = (
+        Titulo.objects.filter(
+            contenidos__isnull=False,
+            edad_minima__lte=perfil_activo.tipo_perfil.edad_max,
+        )
+        .annotate(nombre_busqueda=nombre_titulo)
+        .annotate(imagen_busqueda=Subquery(imagenes.values('imagen')[:1]))
+        .filter(nombre_busqueda__icontains=consulta)
+        .select_related('tipo_titulo')
+        .distinct()
+        .order_by('nombre_busqueda', 'pk')
+    )
+
+    return JsonResponse({
+        'resultados': [
+            {
+                'id': titulo.pk,
+                'nombre': titulo.nombre_busqueda,
+                'tipo': titulo.tipo_titulo.nombre,
+                'imagen': default_storage.url(titulo.imagen_busqueda)
+                if titulo.imagen_busqueda else '',
+                'url': f"{reverse('home')}?titulo={titulo.pk}",
+            }
+            for titulo in titulos
+        ],
     })
 
 
@@ -401,11 +547,7 @@ def mi_lista_view(request):
     ordenamientos = {
         'antiguo': ('fecha_agregado', 'pk'),
         'reciente': ('-fecha_agregado', '-pk'),
-        'alfabetico': (
-            Lower('perfil_titulo__titulo__nombre_original'),
-            'perfil_titulo__titulo__nombre_original',
-            'pk',
-        ),
+        'alfabetico': ('pk',),
     }
     if orden not in ordenamientos:
         orden = 'antiguo'
@@ -414,6 +556,11 @@ def mi_lista_view(request):
         'perfil_titulo__titulo__idioma_titulos',
         queryset=IdiomaTitulo.objects.exclude(imagen='').order_by('idioma__nombre', 'id'),
         to_attr='imagenes_mi_lista',
+    )
+    textos_titulo = Prefetch(
+        'perfil_titulo__titulo__idioma_titulos',
+        queryset=IdiomaTitulo.objects.select_related('idioma').order_by('idioma__nombre', 'id'),
+        to_attr='idiomas_texto',
     )
     titulos_por_ver = (
         Porver.objects.filter(
@@ -425,11 +572,26 @@ def mi_lista_view(request):
             'perfil_titulo__titulo__tipo_titulo',
             'perfil_titulo__perfil',
         )
-        .prefetch_related(imagenes_titulo)
+        .prefetch_related(imagenes_titulo, textos_titulo)
         .order_by(*ordenamientos[orden])
     )
+    titulos_por_ver_lista = list(titulos_por_ver)
+    asignar_textos_titulo(
+        [
+            porver.perfil_titulo.titulo
+            for porver in titulos_por_ver_lista
+        ],
+        request.user.idioma_id,
+    )
+    if orden == 'alfabetico':
+        titulos_por_ver_lista.sort(
+            key=lambda porver: (
+                porver.perfil_titulo.titulo.nombre_mostrar.casefold(),
+                porver.pk,
+            )
+        )
     return render(request, 'mi_lista.html', {
-        'titulos_por_ver': titulos_por_ver,
+        'titulos_por_ver': titulos_por_ver_lista,
         'orden': orden,
         'pagina_mi_lista': True,
     })
