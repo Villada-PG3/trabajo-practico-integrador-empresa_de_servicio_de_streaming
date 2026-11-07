@@ -31,14 +31,18 @@
         }
 
         .navbar-brand-logo {
-            color: var(--netflix-red);
+            color: #ffffff;
             font-weight: 900;
             font-size: 1.8rem;
             letter-spacing: -1px;
             text-decoration: none;
         }
 
-        .navbar-brand-logo:hover {
+        .navbar-brand-red {
+            color: var(--netflix-red);
+        }
+
+        .navbar-brand-logo:hover .navbar-brand-red {
             color: #b81d24;
         }
 
@@ -87,7 +91,7 @@
 <header>
     <nav class="navbar navbar-expand-lg navbar-dark navbar-netflix fixed-top px-4">
         <div class="container-fluid">
-            <a class="navbar-brand-logo me-4" href="{% url 'home' %}">STREAMING</a>
+            <a class="navbar-brand-logo me-4" href="{% url 'home' %}"><span class="navbar-brand-red">Red</span>Flix</a>
             
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent">
                 <span class="navbar-toggler-icon"></span>

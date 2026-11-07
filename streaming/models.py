@@ -23,6 +23,7 @@ class TipoTitulo(models.Model):
 class Categoria(models.Model):
     nombre = models.CharField(max_length=100)
     descripcion = models.TextField(blank=True, null=True)
+    es_edad = models.BooleanField(default=False)
 
     def __str__(self):
         return self.nombre
@@ -127,6 +128,7 @@ class Contenido(models.Model):
     descripcion = models.TextField(blank=True, null=True)
     seccion = models.IntegerField()
     orden = models.IntegerField()
+    duracion_segundos = models.PositiveIntegerField(blank=True, null=True)
     titulo = models.ForeignKey(Titulo, on_delete=models.CASCADE, related_name='contenidos')
 
     def __str__(self):
@@ -298,6 +300,7 @@ class Imagen(Model):
     id = BigAutoField(primary_key=True)
     nombre = CharField(max_length=100)
     imagen = FileField() # hay que ver despues como se implementa
+    es_banner = models.BooleanField(default=False)
     titulo = ForeignKey(Titulo, on_delete=CASCADE)
     
     def __str__(self):
@@ -306,8 +309,8 @@ class Imagen(Model):
 class Usuario(AbstractUser):
     id = BigAutoField(primary_key=True)
     telefono = PhoneNumberField(blank=True)
-    pais = ForeignKey(Pais, on_delete=CASCADE)
-    idioma = ForeignKey(Idioma, on_delete=CASCADE)
+    pais = ForeignKey(Pais, on_delete=CASCADE, blank=True, null=True)
+    idioma = ForeignKey(Idioma, on_delete=CASCADE, blank=True, null=True)
     # hay que ver despues la cuestion con tarjeta
     
     def __str__(self):

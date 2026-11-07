@@ -9,7 +9,6 @@ import phonenumber_field.modelfields
 from django.conf import settings
 from django.db import migrations, models
 
-
 class Migration(migrations.Migration):
 
     initial = True
@@ -41,6 +40,7 @@ class Migration(migrations.Migration):
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('nombre', models.CharField(max_length=100)),
                 ('descripcion', models.TextField(blank=True, null=True)),
+                ('es_edad', models.BooleanField(default=False)),
             ],
         ),
         migrations.CreateModel(
@@ -51,6 +51,7 @@ class Migration(migrations.Migration):
                 ('descripcion', models.TextField(blank=True, null=True)),
                 ('seccion', models.IntegerField()),
                 ('orden', models.IntegerField()),
+                ('duracion_segundos', models.PositiveIntegerField(blank=True, null=True)),
             ],
         ),
         migrations.CreateModel(
@@ -75,6 +76,7 @@ class Migration(migrations.Migration):
                 ('id', models.BigAutoField(primary_key=True, serialize=False)),
                 ('nombre', models.CharField(max_length=100)),
                 ('imagen', models.FileField(upload_to='')),
+                ('es_banner', models.BooleanField(default=False)),
             ],
         ),
         migrations.CreateModel(
@@ -179,8 +181,8 @@ class Migration(migrations.Migration):
                 ('telefono', phonenumber_field.modelfields.PhoneNumberField(blank=True, max_length=128, region=None)),
                 ('groups', models.ManyToManyField(blank=True, help_text='The groups this user belongs to. A user will get all permissions granted to each of their groups.', related_name='user_set', related_query_name='user', to='auth.group', verbose_name='groups')),
                 ('user_permissions', models.ManyToManyField(blank=True, help_text='Specific permissions for this user.', related_name='user_set', related_query_name='user', to='auth.permission', verbose_name='user permissions')),
-                ('idioma', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='streaming.idioma')),
-                ('pais', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='streaming.pais')),
+                ('idioma', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, to='streaming.idioma')),
+                ('pais', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, to='streaming.pais')),
             ],
             options={
                 'verbose_name': 'user',
@@ -372,5 +374,5 @@ class Migration(migrations.Migration):
                 ('rol_elenco', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='titulo_rol_elencos', to='streaming.rolelenco')),
                 ('titulo', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='titulo_rol_elencos', to='streaming.titulo')),
             ],
-        ),
+        )
     ]

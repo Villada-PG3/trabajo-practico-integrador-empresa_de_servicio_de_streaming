@@ -1,15 +1,54 @@
 from django.contrib import messages
 from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.contrib.auth.decorators import login_required
-from django.db.models import Count, F, Q
+from django.db.models import Count, ExpressionWrapper, F, FloatField, Prefetch, Q
 from django.shortcuts import redirect, render
 from django.utils import timezone
 
 from .forms import LoginForm, RegistroForm, ReporteVentasFiltroForm
-from .models import Plan, Precio, Suscripcion
+from .models import Categoria, Contenido, Imagen, Plan, Precio, Suscripcion, Titulo
+
+LIMITE_TITULOS_CARRUSEL = 30
+
+
+def ordenar_categorias_titulo(titulos, categoria_prioritaria=None):
+    for titulo in titulos:
+        if titulo.tipo_titulo.nombre.casefold().startswith('pel'):
+            duracion_segundos = sum(
+                contenido.duracion_segundos or 0
+                for contenido in titulo.contenidos_catalogo
+            )
+            total_minutos = (duracion_segundos + 30) // 60
+            horas, minutos = divmod(total_minutos, 60)
+            titulo.duracion_formateada = ' '.join(
+                parte for parte in (
+                    f'{horas} h' if horas else '',
+                    f'{minutos} min' if minutos else '',
+                ) if parte
+            )
+
+        categorias = [
+            relacion.categoria
+            for relacion in titulo.titulo_categorias.all()
+        ]
+        clasificaciones_edad = sorted(
+            (categoria for categoria in categorias if categoria.es_edad),
+            key=lambda categoria: categoria.nombre.casefold(),
+        )
+        titulo.clasificacion_edad = clasificaciones_edad[0] if clasificaciones_edad else None
+        titulo.categorias_ordenadas = sorted(
+            (categoria for categoria in categorias if not categoria.es_edad),
+            key=lambda categoria: (
+                categoria_prioritaria is not None
+                and categoria.pk != categoria_prioritaria.pk,
+                categoria.nombre.casefold(),
+            ),
+        )
+    return titulos
 
 
 def home(request):
+    cantidad_populares = LIMITE_TITULOS_CARRUSEL if request.user.is_authenticated else 10
     suscripcion_actual = None
     if request.user.is_authenticated:
         suscripcion_actual = (
@@ -18,7 +57,146 @@ def home(request):
             .order_by('-fecha_inscripcion')
             .first()
         )
-    return render(request, 'home.html', {'suscripcion_actual': suscripcion_actual})
+
+    imagenes_banner = Prefetch(
+        'imagen_set',
+        queryset=Imagen.objects.filter(es_banner=True).order_by('id'),
+        to_attr='imagenes_banner',
+    )
+    imagenes_catalogo = Prefetch(
+        'imagen_set',
+        queryset=Imagen.objects.order_by('id'),
+        to_attr='imagenes_catalogo',
+    )
+    contenidos_catalogo = Prefetch(
+        'contenidos',
+        queryset=Contenido.objects.order_by('id'),
+        to_attr='contenidos_catalogo',
+    )
+    relaciones_elenco = 'titulo_rol_elencos__rol_elenco__elenco'
+    titulos_con_contenido = (
+        Titulo.objects.filter(contenidos__isnull=False)
+        .distinct()
+        .select_related('tipo_titulo')
+        .annotate(
+            temporadas=Count(
+                'contenidos__seccion',
+                filter=Q(
+                    tipo_titulo__nombre__istartswith='ser',
+                    contenidos__seccion__gte=1,
+                ),
+                distinct=True,
+            )
+        )
+        .prefetch_related(
+            'titulo_categorias__categoria',
+            relaciones_elenco,
+            imagenes_banner,
+            imagenes_catalogo,
+            contenidos_catalogo,
+        )
+        .order_by('-fecha_estreno', 'nombre_original')
+    )
+    carruseles = []
+
+    reproduccion_valida = Q(
+        contenidos__duracion_segundos__gt=0,
+        contenidos__perfil_contenidos__segundos_vistos__gte=ExpressionWrapper(
+            F('contenidos__duracion_segundos') * 0.1,
+            output_field=FloatField(),
+        )
+    )
+    mas_reproducidos_query = (
+        Titulo.objects.filter(
+            contenidos__isnull=False,
+            contenidos__duracion_segundos__gt=0,
+        )
+        .annotate(
+            reproducciones=Count(
+                'contenidos__perfil_contenidos',
+                filter=reproduccion_valida,
+            ),
+            temporadas=Count(
+                'contenidos__seccion',
+                filter=Q(
+                    tipo_titulo__nombre__istartswith='ser',
+                    contenidos__seccion__gte=1,
+                ),
+                distinct=True,
+            ),
+        )
+        .filter(reproducciones__gt=0)
+        .select_related('tipo_titulo')
+        .prefetch_related(
+            'titulo_categorias__categoria',
+            relaciones_elenco,
+            imagenes_banner,
+            imagenes_catalogo,
+            contenidos_catalogo,
+        )
+        .order_by('-reproducciones', '-fecha_estreno', 'nombre_original')
+    )
+    mas_reproducidos = ordenar_categorias_titulo(
+        list(mas_reproducidos_query[:cantidad_populares])
+    )
+    if mas_reproducidos:
+        carruseles.append({
+            'etiqueta': 'Más reproducidos',
+            'titulos': mas_reproducidos,
+            'mostrar_top': not request.user.is_authenticated,
+        })
+
+    if request.user.is_authenticated:
+        tipos = (
+            ('Películas', 'pel'),
+            ('Series', 'ser'),
+        )
+        for etiqueta, prefijo in tipos:
+            titulos = ordenar_categorias_titulo(list(
+                titulos_con_contenido.filter(
+                    tipo_titulo__nombre__istartswith=prefijo
+                )[:LIMITE_TITULOS_CARRUSEL]
+            ))
+            if titulos:
+                carruseles.append({'etiqueta': etiqueta, 'titulos': titulos})
+
+        categorias = Categoria.objects.filter(
+            titulo_categorias__titulo__contenidos__isnull=False
+        ).filter(es_edad=False).distinct().order_by('nombre')
+        for categoria in categorias:
+            titulos = ordenar_categorias_titulo(list(
+                titulos_con_contenido.filter(
+                    titulo_categorias__categoria=categoria
+                )[:LIMITE_TITULOS_CARRUSEL]
+            ), categoria_prioritaria=categoria)
+            if titulos:
+                carruseles.append({'etiqueta': categoria.nombre, 'titulos': titulos})
+
+    banners = []
+    if request.user.is_authenticated:
+        titulos_banner = titulos_con_contenido.filter(
+            fecha_estreno__isnull=False,
+            imagen__es_banner=True,
+        ).distinct()[:5]
+        for titulo in titulos_banner:
+            nombres_elenco = []
+            for relacion in titulo.titulo_rol_elencos.all():
+                persona = relacion.rol_elenco.elenco
+                nombre = f'{persona.nombre} {persona.apellido}'
+                if nombre not in nombres_elenco:
+                    nombres_elenco.append(nombre)
+            imagen_banner = titulo.imagenes_banner[0] if titulo.imagenes_banner else None
+            banners.append({
+                'titulo': titulo,
+                'elenco': nombres_elenco[:4],
+                'imagen_url': imagen_banner.imagen.url if imagen_banner and imagen_banner.imagen else '',
+            })
+
+    return render(request, 'home.html', {
+        'suscripcion_actual': suscripcion_actual,
+        'carruseles': carruseles,
+        'banners': banners,
+    })
 
 
 def login_view(request):

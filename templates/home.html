@@ -2,7 +2,419 @@
 
 {% block title %}Inicio - RedFlix{% endblock %}
 
+{% block extra_css %}
+<style>
+    .featured-banner {
+        position: relative;
+        min-height: 620px;
+        height: min(78vh, 900px);
+        overflow: hidden;
+        isolation: isolate;
+        background: #101010;
+    }
+
+    .featured-banner-slide {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 1.1s ease-in-out;
+    }
+
+    .featured-banner-slide.is-active {
+        z-index: 1;
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    .featured-banner-image {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: center 35%;
+        transform: scale(1.025);
+        transition: transform 6s ease;
+    }
+
+    .featured-banner-slide.is-active .featured-banner-image {
+        transform: scale(1);
+    }
+
+    .featured-banner-shade {
+        position: absolute;
+        inset: 0;
+        background:
+            linear-gradient(90deg, rgba(0, 0, 0, 0.94) 0%, rgba(0, 0, 0, 0.68) 37%, rgba(0, 0, 0, 0.08) 100%),
+            linear-gradient(0deg, #141414 0%, transparent 30%, rgba(0, 0, 0, 0.12) 100%);
+    }
+
+    .featured-banner-content {
+        position: absolute;
+        z-index: 2;
+        right: 0;
+        bottom: clamp(5rem, 11vh, 8rem);
+        left: 0;
+        width: min(1500px, 100%);
+        margin: 0 auto;
+        padding: 0 clamp(1.5rem, 6vw, 6rem);
+        text-align: left;
+    }
+
+    .featured-banner-copy {
+        max-width: 700px;
+    }
+
+    .featured-banner-title {
+        max-width: 680px;
+        font-size: clamp(2.5rem, 6vw, 5.5rem);
+        font-weight: 800;
+        line-height: 1.02;
+        text-wrap: balance;
+        text-shadow: 0 2px 18px rgba(0, 0, 0, 0.55);
+    }
+
+    .featured-banner-description {
+        display: -webkit-box;
+        overflow: hidden;
+        max-width: 620px;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 4;
+    }
+
+    .featured-banner-controls {
+        position: absolute;
+        z-index: 3;
+        right: clamp(1.5rem, 5vw, 5rem);
+        bottom: 2rem;
+        display: flex;
+        align-items: center;
+        gap: 0.65rem;
+    }
+
+    .featured-banner-button,
+    .featured-banner-indicator {
+        display: grid;
+        place-items: center;
+        border: 1px solid rgba(255, 255, 255, 0.6);
+        background: rgba(0, 0, 0, 0.4);
+        color: #fff;
+    }
+
+    .featured-banner-button {
+        width: 2.75rem;
+        height: 2.75rem;
+        border-radius: 50%;
+    }
+
+    .featured-banner-button:hover,
+    .featured-banner-indicator.is-active {
+        border-color: #fff;
+        background: #fff;
+        color: #141414;
+    }
+
+    .featured-banner-indicators {
+        display: flex;
+        gap: 0.4rem;
+        margin: 0 0.35rem;
+    }
+
+    .featured-banner-indicator {
+        width: 0.6rem;
+        height: 0.6rem;
+        border-radius: 50%;
+        padding: 0;
+    }
+
+    .title-catalog {
+        padding: 2rem 0 3rem;
+        background: linear-gradient(180deg, #141414 0%, #090909 100%);
+    }
+
+    .title-carousel {
+        margin: 0 auto 2.5rem;
+        max-width: 1600px;
+    }
+
+    .title-carousel-heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        margin: 0 auto 0.9rem;
+        max-width: 1500px;
+    }
+
+    .title-carousel-track {
+        --title-card-gap: 1rem;
+        --title-card-width: calc(20% - 1rem);
+        display: flex;
+        gap: var(--title-card-gap);
+        overflow-x: auto;
+        overscroll-behavior-inline: contain;
+        padding: 0.35rem max(1.5rem, calc((100vw - 1500px) / 2)) 9rem;
+        scroll-padding-inline: max(1.5rem, calc((100vw - 1500px) / 2));
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+    }
+
+    .title-carousel-track::-webkit-scrollbar {
+        display: none;
+    }
+
+    .title-card {
+        position: relative;
+        flex: 0 0 var(--title-card-width);
+        width: var(--title-card-width);
+        transition:
+            flex-basis 0.8s cubic-bezier(0.22, 1, 0.36, 1),
+            width 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .title-card > .pt-2 {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        width: 100%;
+    }
+
+    .title-card:hover,
+    .title-card:focus-within {
+        z-index: 2;
+        flex-basis: calc(var(--title-card-width) * 1.2);
+        width: calc(var(--title-card-width) * 1.2);
+    }
+
+    .title-poster {
+        position: relative;
+        display: flex;
+        height: clamp(8rem, 11vw, 10.5rem);
+        flex-direction: column;
+        justify-content: space-between;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 0.5rem;
+        padding: 1rem;
+        background: linear-gradient(145deg, #44232f, #171717 70%);
+        box-shadow: 0 0.75rem 1.5rem rgba(0, 0, 0, 0.3);
+        transition: transform 0.8s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.8s ease;
+    }
+
+    .title-poster-image {
+        position: absolute;
+        z-index: 0;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: center center;
+    }
+
+    .title-card:nth-child(5n + 2) .title-poster {
+        background: linear-gradient(145deg, #173b4a, #171717 72%);
+    }
+
+    .title-card:nth-child(5n + 3) .title-poster {
+        background: linear-gradient(145deg, #584025, #171717 72%);
+    }
+
+    .title-card:nth-child(5n + 4) .title-poster {
+        background: linear-gradient(145deg, #35305a, #171717 72%);
+    }
+
+    .title-card:nth-child(5n) .title-poster {
+        background: linear-gradient(145deg, #31503a, #171717 72%);
+    }
+
+    .title-card:hover .title-poster,
+    .title-card:focus-within .title-poster {
+        transform: translateY(-4px) scale(1.02);
+        border-color: rgba(255, 255, 255, 0.45);
+    }
+
+    .title-poster::after {
+        position: absolute;
+        right: -2rem;
+        bottom: -3rem;
+        width: 10rem;
+        height: 10rem;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 50%;
+        content: "";
+        box-shadow: 0 0 0 1.5rem rgba(255, 255, 255, 0.025),
+                    0 0 0 3rem rgba(255, 255, 255, 0.02);
+    }
+
+    .title-poster-type,
+    .title-poster-mark {
+        position: relative;
+        z-index: 1;
+    }
+
+    .title-poster-mark {
+        align-self: center;
+        color: rgba(255, 255, 255, 0.88);
+        font-size: clamp(3rem, 7vw, 5rem);
+        font-weight: 800;
+        letter-spacing: -0.08em;
+        line-height: 1;
+        text-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.4);
+    }
+
+    .title-poster-rank {
+        position: absolute;
+        z-index: 1;
+        right: 0.75rem;
+        bottom: 0.1rem;
+        color: rgba(255, 255, 255, 0.95);
+        font-size: clamp(4rem, 8vw, 6rem);
+        font-weight: 900;
+        line-height: 1;
+        text-shadow: 0 0.25rem 1rem rgba(0, 0, 0, 0.8);
+    }
+
+    .title-card-name {
+        display: -webkit-box;
+        overflow: hidden;
+        min-height: 2.8rem;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+    }
+
+    .title-carousel-controls {
+        display: flex;
+        gap: 0.5rem;
+    }
+
+    .title-carousel-control {
+        width: 2.4rem;
+        height: 2.4rem;
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        border-radius: 50%;
+        background: rgba(0, 0, 0, 0.45);
+        color: white;
+    }
+
+    .title-carousel-control:hover {
+        background: #e50914;
+        border-color: #e50914;
+    }
+
+    @media (max-width: 575.98px) {
+        .featured-banner {
+            min-height: 640px;
+            height: 78vh;
+        }
+
+        .featured-banner-shade {
+            background:
+                linear-gradient(0deg, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.5) 55%, rgba(0, 0, 0, 0.12) 100%);
+        }
+
+        .featured-banner-content {
+            bottom: 6rem;
+            padding-inline: 1.25rem;
+        }
+
+        .featured-banner-controls {
+            right: 1.25rem;
+            bottom: 1.25rem;
+        }
+
+        .title-carousel-track {
+            --title-card-width: min(78vw, 340px);
+            --title-card-gap: 0.75rem;
+            padding-inline: 1rem;
+            padding-bottom: 10rem;
+            scroll-padding-inline: 1rem;
+        }
+
+        .title-poster {
+            height: clamp(8rem, 49vw, 12.75rem);
+        }
+
+        .title-card {
+            flex-basis: var(--title-card-width);
+            width: var(--title-card-width);
+        }
+
+        .title-card:hover,
+        .title-card:focus-within {
+            flex-basis: calc(var(--title-card-width) * 1.2);
+            width: calc(var(--title-card-width) * 1.2);
+        }
+    }
+
+    @media (min-width: 576px) and (max-width: 991.98px) {
+        .title-carousel-track {
+            --title-card-width: min(52vw, 280px);
+        }
+
+        .title-poster {
+            height: clamp(8rem, 20vw, 10.5rem);
+        }
+
+        .title-card {
+            flex-basis: var(--title-card-width);
+            width: var(--title-card-width);
+        }
+    }
+
+</style>
+{% endblock %}
+
 {% block content %}
+{% if user.is_authenticated and banners %}
+<section class="featured-banner" data-featured-banner aria-label="Novedades">
+    {% for banner in banners %}
+    <article class="featured-banner-slide{% if forloop.first %} is-active{% endif %}"
+             data-featured-slide
+             aria-hidden="{% if forloop.first %}false{% else %}true{% endif %}">
+        {% if banner.imagen_url %}
+            <img class="featured-banner-image" src="{{ banner.imagen_url }}" alt="" {% if not forloop.first %}loading="lazy"{% endif %}>
+        {% endif %}
+        <div class="featured-banner-shade" aria-hidden="true"></div>
+        <div class="featured-banner-content">
+            <div class="featured-banner-copy text-white">
+                <p class="text-uppercase text-danger fw-bold mb-2">
+                    Novedad{% if banner.titulo.fecha_estreno %} · {{ banner.titulo.fecha_estreno|date:"Y" }}{% endif %}
+                </p>
+                <h1 class="featured-banner-title mb-3">{{ banner.titulo.nombre_original }}</h1>
+                <p class="featured-banner-description fs-5 mb-3">
+                    {{ banner.titulo.descripcion_original|default:"Descubre una nueva historia para disfrutar en nuestra plataforma." }}
+                </p>
+                {% if banner.elenco %}
+                    <p class="mb-3"><span class="fw-semibold">Elenco:</span> {{ banner.elenco|join:", " }}</p>
+                {% endif %}
+                <p class="text-white-50 mb-0">{{ banner.titulo.tipo_titulo.nombre }}</p>
+            </div>
+        </div>
+    </article>
+    {% endfor %}
+
+    {% if banners|length > 1 %}
+    <div class="featured-banner-controls" aria-label="Controles de novedades">
+        <button class="featured-banner-button" type="button" data-banner-step="-1" aria-label="Novedad anterior">
+            <i class="bi bi-chevron-left" aria-hidden="true"></i>
+        </button>
+        <div class="featured-banner-indicators" aria-label="Elegir novedad">
+            {% for banner in banners %}
+            <button class="featured-banner-indicator{% if forloop.first %} is-active{% endif %}"
+                    type="button" data-banner-index="{{ forloop.counter0 }}"
+                    aria-label="Mostrar novedad {{ forloop.counter }}"
+                    aria-current="{% if forloop.first %}true{% else %}false{% endif %}"></button>
+            {% endfor %}
+        </div>
+        <button class="featured-banner-button" type="button" data-banner-step="1" aria-label="Novedad siguiente">
+            <i class="bi bi-chevron-right" aria-hidden="true"></i>
+        </button>
+    </div>
+    {% endif %}
+</section>
+{% else %}
 <div class="position-relative text-center text-white py-5 d-flex align-items-center justify-content-center" 
      style="min-height: 80vh; background: linear-gradient(rgba(0,0,0,0.75), rgba(0,0,0,0.75)), url('https://picsum.photos/1920/1080') center/cover no-repeat;">
     
@@ -45,6 +457,73 @@
     </div>
 
 </div>
+{% endif %}
+
+{% if carruseles %}
+<section class="title-catalog" aria-label="Catálogo de títulos">
+    {% for carrusel in carruseles %}
+    <section class="title-carousel" aria-labelledby="carousel-title-{{ forloop.counter }}">
+        <div class="title-carousel-heading px-4">
+            <h2 class="h3 fw-bold mb-0" id="carousel-title-{{ forloop.counter }}">{{ carrusel.etiqueta }}</h2>
+            <div class="title-carousel-controls" aria-label="Controles del carrusel">
+                <button class="title-carousel-control" type="button"
+                        data-carousel-target="carousel-track-{{ forloop.counter }}" data-carousel-direction="-1"
+                        aria-label="Desplazar {{ carrusel.etiqueta }} hacia la izquierda">
+                    <i class="bi bi-chevron-left" aria-hidden="true"></i>
+                </button>
+                <button class="title-carousel-control" type="button"
+                        data-carousel-target="carousel-track-{{ forloop.counter }}" data-carousel-direction="1"
+                        aria-label="Desplazar {{ carrusel.etiqueta }} hacia la derecha">
+                    <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                </button>
+            </div>
+        </div>
+        <div class="title-carousel-track" id="carousel-track-{{ forloop.counter }}" role="list">
+            {% for titulo in carrusel.titulos %}
+            <article class="title-card" role="listitem">
+                <div class="title-poster">
+                    {% with imagen=titulo.imagenes_catalogo|first %}
+                        {% if imagen and imagen.imagen %}
+                            <img class="title-poster-image" src="{{ imagen.imagen.url }}" alt="{{ titulo.nombre_original }}" loading="lazy">
+                        {% else %}
+                    <span class="title-poster-mark" aria-hidden="true">{{ titulo.nombre_original|slice:":1"|upper }}</span>
+                        {% endif %}
+                    {% endwith %}
+                    <span class="small fw-semibold text-white-50">{{ titulo.fecha_estreno|date:"Y" }}</span>
+                    {% if carrusel.mostrar_top %}
+                        <span class="title-poster-rank" aria-label="Puesto {{ forloop.counter }}">{{ forloop.counter }}</span>
+                    {% endif %}
+                </div>
+                <div class="pt-2">
+                    <h3 class="title-card-name h6 fw-semibold mb-1">{{ titulo.nombre_original }}</h3>
+                    <p class="title-card-type small text-white-50 mb-1">
+                        {{ titulo.tipo_titulo.nombre }}
+                        {% if titulo.duracion_formateada %}
+                            <span class="px-1" aria-hidden="true">|</span> {{ titulo.duracion_formateada }}
+                        {% elif titulo.temporadas %}
+                            <span class="px-1" aria-hidden="true">|</span> {{ titulo.temporadas }} temporada{{ titulo.temporadas|pluralize:"s" }}
+                        {% endif %}
+                    </p>
+                    {% if titulo.clasificacion_edad %}
+                        <p class="small text-white-50 mb-1">
+                            Clasificación: <span class="badge rounded-pill text-bg-secondary">{{ titulo.clasificacion_edad.nombre }}</span>
+                        </p>
+                    {% endif %}
+                    {% if titulo.categorias_ordenadas %}
+                        <p class="title-card-categories small text-secondary mb-0">
+                            {% for categoria in titulo.categorias_ordenadas %}
+                                {% if not forloop.first %}<span aria-hidden="true"> · </span>{% endif %}{{ categoria.nombre }}
+                            {% endfor %}
+                        </p>
+                    {% endif %}
+                </div>
+            </article>
+            {% endfor %}
+        </div>
+    </section>
+    {% endfor %}
+</section>
+{% endif %}
 
 <!-- Sección informativa simple -->
 <div class="border-top border-secondary border-opacity-25 py-5 bg-black">
@@ -62,4 +541,131 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const featuredBanner = document.querySelector('[data-featured-banner]');
+    if (featuredBanner) {
+        const slides = [...featuredBanner.querySelectorAll('[data-featured-slide]')];
+        const indicators = [...featuredBanner.querySelectorAll('[data-banner-index]')];
+        let currentSlide = 0;
+        let rotationTimer;
+
+        const showSlide = (nextIndex) => {
+            currentSlide = (nextIndex + slides.length) % slides.length;
+            slides.forEach((slide, index) => {
+                const isActive = index === currentSlide;
+                slide.classList.toggle('is-active', isActive);
+                slide.setAttribute('aria-hidden', String(!isActive));
+            });
+            indicators.forEach((indicator, index) => {
+                const isActive = index === currentSlide;
+                indicator.classList.toggle('is-active', isActive);
+                indicator.setAttribute('aria-current', String(isActive));
+            });
+        };
+
+        const startRotation = () => {
+            window.clearInterval(rotationTimer);
+            if (slides.length > 1) {
+                rotationTimer = window.setInterval(() => showSlide(currentSlide + 1), 5000);
+            }
+        };
+
+        featuredBanner.querySelectorAll('[data-banner-step]').forEach((button) => {
+            button.addEventListener('click', () => {
+                showSlide(currentSlide + Number(button.dataset.bannerStep));
+                startRotation();
+            });
+        });
+        indicators.forEach((indicator) => {
+            indicator.addEventListener('click', () => {
+                showSlide(Number(indicator.dataset.bannerIndex));
+                startRotation();
+            });
+        });
+
+        startRotation();
+    }
+
+    const carouselAnimationFrames = new WeakMap();
+
+    const getCarouselMetrics = (track) => {
+        const cards = [...track.querySelectorAll('.title-card')];
+        if (!cards.length) {
+            return { cards, step: 0, visibleCount: 0, maxStart: 0, start: 0 };
+        }
+
+        const styles = getComputedStyle(track);
+        const gap = Number.parseFloat(styles.columnGap) || 0;
+        const step = cards[0].getBoundingClientRect().width + gap;
+        const padding = Number.parseFloat(styles.paddingLeft) + Number.parseFloat(styles.paddingRight);
+        const availableWidth = track.clientWidth - padding;
+        const visibleCount = Math.max(1, Math.floor((availableWidth + gap) / step));
+        const maxStart = Math.max(0, cards.length - visibleCount);
+        const start = Math.min(maxStart, Math.max(0, Math.round(track.scrollLeft / step)));
+
+        return { cards, step, visibleCount, maxStart, start };
+    };
+
+    const animateCarouselTo = (track, targetLeft) => {
+        const previousFrame = carouselAnimationFrames.get(track);
+        if (previousFrame) {
+            cancelAnimationFrame(previousFrame);
+        }
+
+        const startLeft = track.scrollLeft;
+        const distance = targetLeft - startLeft;
+        const duration = 750;
+        const startTime = performance.now();
+
+        const animate = (now) => {
+            const progress = duration ? Math.min((now - startTime) / duration, 1) : 1;
+            const easedProgress = progress < 0.5
+                ? 4 * progress ** 3
+                : 1 - ((-2 * progress + 2) ** 3) / 2;
+            track.scrollLeft = startLeft + distance * easedProgress;
+
+            if (progress < 1) {
+                carouselAnimationFrames.set(track, requestAnimationFrame(animate));
+            } else {
+                carouselAnimationFrames.delete(track);
+            }
+        };
+
+        carouselAnimationFrames.set(track, requestAnimationFrame(animate));
+    };
+
+    const updateCarouselControls = (track) => {
+        const { maxStart, start } = getCarouselMetrics(track);
+        document.querySelectorAll(`[data-carousel-target="${track.id}"]`).forEach((button) => {
+            const direction = Number(button.dataset.carouselDirection);
+            button.disabled = direction < 0 ? start === 0 : start >= maxStart;
+        });
+    };
+
+    document.querySelectorAll('.title-carousel-track').forEach((track) => {
+        const updateControls = () => updateCarouselControls(track);
+        track.addEventListener('scroll', updateControls, { passive: true });
+        window.addEventListener('resize', updateControls);
+        updateControls();
+    });
+
+    document.querySelectorAll('[data-carousel-target]').forEach((button) => {
+        button.addEventListener('click', () => {
+            const track = document.getElementById(button.dataset.carouselTarget);
+            const { cards, step, visibleCount, maxStart, start } = getCarouselMetrics(track);
+            if (!cards.length || !step) {
+                return;
+            }
+
+            const direction = Number(button.dataset.carouselDirection);
+            const targetStart = direction > 0
+                ? Math.min(start + visibleCount, maxStart)
+                : Math.max(start - visibleCount, 0);
+            animateCarouselTo(track, targetStart * step);
+        });
+    });
+</script>
 {% endblock %}

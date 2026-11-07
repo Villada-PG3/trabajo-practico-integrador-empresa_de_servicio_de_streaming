@@ -25,11 +25,13 @@ class RegistroForm(forms.Form):
         label='País',
         queryset=Pais.objects.order_by('nombre'),
         empty_label='Selecciona tu país',
+        required=False,
     )
     idioma = forms.ModelChoiceField(
         label='Idioma',
         queryset=Idioma.objects.order_by('nombre'),
         empty_label='Selecciona tu idioma',
+        required=False,
     )
 
     def __init__(self, *args, **kwargs):

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <defs>
+    <linearGradient id="polar" x2="0" y2="1">
+      <stop stop-color="#102c4a"/>
+      <stop offset=".54" stop-color="#236878"/>
+      <stop offset="1" stop-color="#101d32"/>
+    </linearGradient>
+    <linearGradient id="aurora">
+      <stop stop-color="#4de0b0" stop-opacity="0"/>
+      <stop offset=".48" stop-color="#4de0b0" stop-opacity=".58"/>
+      <stop offset="1" stop-color="#b2f6d2" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="900" fill="url(#polar)"/>
+  <path d="M140 0q260 170 470 20t460 12q194 80 390-32l140 220q-266-91-496 40t-513 17Q344 210 0 310Z" fill="url(#aurora)"/>
+  <path d="M0 620 190 420l203 176 224-273 220 296 230-214 224 225 160-140 149 111v299H0Z" fill="#d9e8e8"/>
+  <path d="m0 704 271-133 168 115 205-183 211 168 193-112 238 145 172-103 142 83v216H0Z" fill="#839fa8"/>
+  <path d="M0 830q300-110 600 0t560-8q246-82 440-12v90H0Z" fill="#17283c"/>
+  <g fill="#f3fbf7" opacity=".75"><circle cx="300" cy="155" r="3"/><circle cx="940" cy="125" r="2"/><circle cx="1330" cy="280" r="3"/></g>
+</svg>

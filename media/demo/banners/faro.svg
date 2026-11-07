@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <defs>
+    <linearGradient id="sea" x2="0" y2="1">
+      <stop stop-color="#324b64"/>
+      <stop offset=".48" stop-color="#bd7868"/>
+      <stop offset="1" stop-color="#172638"/>
+    </linearGradient>
+    <linearGradient id="light" x2="0" y2="1">
+      <stop stop-color="#ffe4aa" stop-opacity=".55"/>
+      <stop offset="1" stop-color="#ffe4aa" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="900" fill="url(#sea)"/>
+  <path d="m1050 238 550-160v435l-550-160Z" fill="url(#light)"/>
+  <circle cx="1065" cy="248" r="13" fill="#fff1c8"/>
+  <path d="M0 580q244-75 490 9t492 4q278-107 618 9v298H0Z" fill="#344653"/>
+  <path d="M0 673q250-60 505 10t510 0q260-67 585 10v207H0Z" fill="#202f40"/>
+  <path d="M952 700h215l153 200H770Z" fill="#111d2a"/>
+  <path d="M1025 700V367h85v333Zm-30-333h146l-22-49h-102Z" fill="#e1c4a0"/>
+  <path d="M1009 369h115v33h-115Z" fill="#293448"/>
+  <path d="M0 827q290-47 580 2t510-7q280-49 510 9v69H0Z" fill="#121d2b"/>
+</svg>
