@@ -1,0 +1,299 @@
+:root {
+    --netflix-red: #E50914;
+    --netflix-black: #141414;
+    --netflix-dark-gray: #181818;
+    --netflix-light-gray: #2f2f2f;
+}
+
+body {
+    background-color: var(--netflix-black);
+    color: #ffffff;
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.navbar-netflix {
+    background-color: rgba(20, 20, 20, 0.95);
+    transition: background-color 0.4s ease;
+}
+
+.navbar-brand-logo {
+    color: var(--netflix-red);
+    font-weight: 900;
+    font-size: 1.8rem;
+    letter-spacing: -1px;
+    text-decoration: none;
+}
+
+.navbar-brand-logo:hover {
+    color: #b81d24;
+}
+
+/* Botón primario rojo Netflix */
+.btn-netflix {
+    background-color: var(--netflix-red);
+    color: #ffffff;
+    font-weight: 600;
+    border: none;
+    padding: 0.5rem 1.25rem;
+    border-radius: 4px;
+}
+
+.btn-netflix:hover {
+    background-color: #c11119;
+    color: #ffffff;
+}
+
+/* Contenido principal */
+main {
+    flex: 1;
+}
+
+/* Pie de página */
+footer {
+    background-color: #000000;
+    color: #757575;
+    font-size: 0.85rem;
+}
+
+footer a {
+    color: #757575;
+    text-decoration: none;
+}
+
+footer a:hover {
+    text-decoration: underline;
+}
+
+.perfiles-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 30px;
+    min-height: 100vh;
+}
+
+.perfil {
+    position: relative;
+    width: 160px;
+    text-align: center;
+}
+
+.perfil-imagen {
+    position: relative;
+    width: 160px;
+    height: 160px;
+}
+
+.perfil-imagen img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 6px;
+}
+
+.perfil-nombre {
+    margin-top: 12px;
+    color: white;
+    font-size: 18px;
+}
+
+.perfil-editar {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    border: none;
+
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    font-size: 20px;
+
+    display: none;
+    cursor: pointer;
+}
+
+.perfil:hover .perfil-editar {
+    display: block;
+}
+
+.perfil-agregar {
+    width: 160px;
+    text-align: center;
+    color: white;
+}
+
+.agregar-icono {
+    width: 160px;
+    height: 160px;
+
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+    border-radius: 6px;
+    background: #333;
+
+    font-size: 70px;
+    font-weight: 200;
+    color: #aaa;
+}
+
+.agregar-icono:hover {
+    background: #444;
+    color: white;
+    cursor: pointer;
+}
+
+.login-page {
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: var(--netflix-black);
+}
+
+.login-container {
+    width: 520px;
+    padding: 30px 50px 45px;
+    background: var(--netflix-dark-gray);
+    border-radius: 8px;
+    box-sizing: border-box;
+}
+
+.login-title {
+    margin: 0;
+    text-align: center;
+    color: #ffffff;
+    font-size: 38px;
+    font-weight: 500;
+}
+
+.login-title-line {
+    width: 255px;
+    height: 3px;
+    margin: 14px auto 65px;
+    background: var(--netflix-red);
+}
+
+.login-form {
+    width: 100%;
+}
+
+.login-field {
+    position: relative;
+    margin-bottom: 28px;
+}
+
+.login-field input {
+    width: 100%;
+    padding: 12px 10px;
+    box-sizing: border-box;
+    border: none;
+    border-bottom: 2px solid #666;
+    outline: none;
+    background: transparent;
+    color: #ffffff;
+    font-size: 17px;
+}
+
+.login-field input:focus {
+    border-bottom-color: var(--netflix-red);
+}
+
+.login-field input::placeholder {
+    color: #999;
+}
+
+.login-password-toggle {
+    position: absolute;
+    right: 5px;
+    bottom: 8px;
+    border: none;
+    background: none;
+    color: #999;
+    cursor: pointer;
+}
+
+.login-forgot {
+    display: block;
+    margin: -10px 0 36px;
+    text-align: right;
+    color: #ffffff;
+    text-decoration: none;
+    font-size: 16px;
+}
+
+.login-forgot:hover,
+.login-register a:hover {
+    color: var(--netflix-red);
+}
+
+.login-button {
+    width: 100%;
+    padding: 14px;
+    border: none;
+    border-radius: 6px;
+    background: var(--netflix-red);
+    color: white;
+    font-size: 19px;
+    cursor: pointer;
+}
+
+.login-button:hover {
+    background: #b20710;
+}
+
+.login-register {
+    margin-top: 28px;
+    text-align: center;
+    color: #ffffff;
+    font-size: 17px;
+}
+
+.login-register a {
+    color: #c9121b;
+    text-decoration: underline;
+}
+
+.login-divider {
+    height: 1px;
+    margin: 30px 0;
+    background: var(--netflix-light-gray);
+}
+
+.login-social {
+    position: relative;
+    width: 100%;
+    height: 53px;
+    margin-bottom: 14px;
+    border-radius: 6px;
+    font-size: 17px;
+    cursor: pointer;
+}
+
+.login-facebook {
+    border: none;
+    background: #4267B2;
+    color: white;
+}
+
+.login-google {
+    border: 1px solid #666;
+    background: transparent;
+    color: #ffffff;
+}
+
+.login-social-icon {
+    position: absolute;
+    left: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 25px;
+    font-weight: bold;
+}

@@ -242,3 +242,4 @@ def crear_perfil_view(request):
         )
         messages.success(request, f'Perfil "{nombre}" creado con éxito.')
     return redirect('seleccionar_perfil')
+
