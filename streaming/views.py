@@ -1,10 +1,13 @@
-from django.shortcuts import render, redirect
+from django.contrib.auth.decorators import login_required
+from django.core.files.storage import default_storage
+from django.views.decorators.http import require_POST
+from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.contrib import messages
 import calendar
-from django.db.models import Count, F
+from django.db.models import Count, F, Q
 from django.utils.dateparse import parse_date
-from .models import Idioma, Precio, Suscripcion, Plan, Tarjeta, MarcaTarjeta, MetodoPago, Cobro, EstadoCobro, Perfil, TipoPerfil, Imagen
+from .models import *
 from django.contrib.auth.models import User
 from datetime import date
 from django.utils import timezone
@@ -258,4 +261,82 @@ def crear_perfil_view(request):
         )
         messages.success(request, f'Perfil "{nombre}" creado con éxito.')
     return redirect('seleccionar_perfil')
-
+ 
+def get_perfil(request, perfil_id):
+    # usuario=request.user impide entrar a perfiles ajenos cambiando el numero de la URL
+    return get_object_or_404(Perfil, pk=perfil_id, usuario=request.user)
+ 
+ 
+def get_portada(titulo_id):
+    # Las portadas son archivos sueltos: MEDIA_ROOT/portada/titulo{id}.png (no pasan por el modelo Imagen).
+    # Si el archivo no existe devuelve None y la template muestra el cartel con el nombre.
+    ruta = f"portada/titulo{titulo_id}.png"
+    return default_storage.url(ruta) if default_storage.exists(ruta) else None
+ 
+ 
+@login_required
+def catalogo(request, perfil_id):
+    perfil = get_perfil(request, perfil_id)
+    hoy = date.today()
+ 
+    # Una sola consulta: cada fila es un par (titulo, categoria). Solo titulos ya estrenados y no dados de baja.
+    relaciones = (
+        TituloCategoria.objects
+        .filter(
+            Q(titulo__fecha_estreno__isnull=True) | Q(titulo__fecha_estreno__lte=hoy),
+            Q(titulo__fecha_baja__isnull=True) | Q(titulo__fecha_baja__gte=hoy),
+        )
+        .select_related("categoria", "titulo", "titulo__tipo_titulo")
+        .order_by("categoria__nombre", "titulo__nombre_original")
+    )
+ 
+    filas = {}      # categoria_id -> {"nombre": ..., "titulos": [...]}
+    por_id = {}     # titulo_id -> instancia (para armar la fila "Mi lista" sin consultas extra)
+    portadas = {}   # titulo_id -> url (un titulo puede estar en varias categorias: se resuelve una sola vez)
+    for r in relaciones:
+        if r.titulo_id not in portadas:
+            portadas[r.titulo_id] = get_portada(r.titulo_id)
+        r.titulo.portada = portadas[r.titulo_id]
+        por_id.setdefault(r.titulo_id, r.titulo)
+        fila = filas.setdefault(r.categoria_id, {"nombre": r.categoria.nombre, "titulos": []})
+        fila["titulos"].append(r.titulo)
+    filas = list(filas.values())
+ 
+    # Mi lista = filas de Porver sin fecha_eliminado del perfil activo (mas reciente primero)
+    ids_mi_lista = list(dict.fromkeys(
+        Porver.objects
+        .filter(perfil_titulo__perfil=perfil, fecha_eliminado__isnull=True)
+        .order_by("-fecha_agregado", "-id")
+        .values_list("perfil_titulo__titulo_id", flat=True)
+    ))
+    mi_lista = [por_id[i] for i in ids_mi_lista if i in por_id]
+    if mi_lista:
+        filas.insert(0, {"nombre": "Mi lista", "titulos": mi_lista})
+ 
+    return render(request, "catalogo.html", {
+        "perfil": perfil,
+        "filas": filas,                       # [{"nombre": str, "titulos": [Titulo con .portada]}]
+        "en_mi_lista": set(ids_mi_lista),     # ids de titulos para marcar el boton
+    })
+ 
+ 
+@login_required
+@require_POST
+def toggle_mi_lista(request, perfil_id, titulo_id):
+    perfil = get_perfil(request, perfil_id)
+    titulo = get_object_or_404(Titulo, pk=titulo_id)
+ 
+    perfil_titulo = (
+        PerfilTitulo.objects.filter(perfil=perfil, titulo=titulo).first()
+        or PerfilTitulo.objects.create(perfil=perfil, titulo=titulo)
+    )
+    activo = Porver.objects.filter(perfil_titulo=perfil_titulo, fecha_eliminado__isnull=True).first()
+ 
+    if activo:  # ya estaba en la lista: se "elimina" (queda el historial con fecha_eliminado)
+        activo.fecha_eliminado = date.today()
+        activo.save(update_fields=["fecha_eliminado"])
+    else:
+        Porver.objects.create(perfil_titulo=perfil_titulo, fecha_agregado=date.today())
+ 
+    return redirect("catalogo", perfil_id=perfil.id)
+ 

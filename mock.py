@@ -104,12 +104,6 @@ for t in titulos:
 for t, n in zip(titulos, ["Shadows of the South", "Code Zero", "Neon Samurai", "The Last Show", "Vanishing Point", "Invisible Oceans"]):
     IdiomaTitulo.objects.create(titulo=t, idioma=idi["Inglés"], nombre=n, descripcion=f"English title: {n}")
 
-# Imagen.imagen es un ImageField con upload_to=imagen_upload_path: se guarda en media/perfil/<slug-del-titulo>/
-# (hay que pasar el titulo al crear la Imagen, porque la ruta se arma con instance.titulo)
-imgs_titulo = [Imagen.objects.create(nombre=f"Portada {t.nombre_original}", titulo=t,
-                                     imagen=png(t.nombre_original, COLORES[i % len(COLORES)], "portada.png"))
-               for i, t in enumerate(titulos)]
-
 # ---------- CONTENIDO (series: 2 temporadas x 3 episodios; resto: 1 contenido) ----------
 contenidos = [Contenido.objects.create(nombre=f"{t.nombre_original} - T{s}E{e}", descripcion=f"Episodio {e} de la temporada {s}", seccion=s, orden=e, titulo=t) for t in titulos[:3] for s in (1, 2) for e in (1, 2, 3)]
 contenidos += [Contenido.objects.create(nombre=t.nombre_original, descripcion="Contenido completo", seccion=1, orden=1, titulo=t) for t in titulos[3:]]

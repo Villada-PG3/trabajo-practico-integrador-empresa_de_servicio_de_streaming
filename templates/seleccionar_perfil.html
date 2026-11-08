@@ -8,7 +8,7 @@
 
     <div class="d-flex flex-wrap justify-content-center gap-4 mb-5">
         {% for perfil in perfiles %}
-            <a href="{% url 'home' %}" class="text-decoration-none text-center text-white profile-card">
+            <a href="{% url 'catalogo' perfil.id %}" class="text-decoration-none text-center text-white profile-card">
                 <div class="rounded-3 bg-secondary d-flex align-items-center justify-content-center mb-2 shadow profile-avatar" style="width: 140px; height: 140px; font-size: 3rem;">
                     <i class="bi bi-person-fill"></i>
                 </div>
@@ -16,7 +16,7 @@
             </a>
         {% empty %}
             <!-- Perfil por defecto si recién se registra y no creó perfiles -->
-            <a href="{% url 'home' %}" class="text-decoration-none text-center text-white profile-card">
+            <a href="{% url 'catalogo' perfil.id %}" class="text-decoration-none text-center text-white profile-card">
                 <div class="rounded-3 bg-danger d-flex align-items-center justify-content-center mb-2 shadow profile-avatar" style="width: 140px; height: 140px; font-size: 3rem;">
                     <i class="bi bi-person-fill"></i>
                 </div>

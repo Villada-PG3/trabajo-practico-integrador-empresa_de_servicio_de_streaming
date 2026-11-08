@@ -11,4 +11,6 @@ urlpatterns = [
     path('pago/', views.pago_view, name='pago'),
     path('seleccionar-perfil/', views.seleccionar_perfil_view, name='seleccionar_perfil'),
     path('crear-perfil/', views.crear_perfil_view, name='crear_perfil'),
+    path("perfil/<int:perfil_id>/catalogo/", views.catalogo, name="catalogo"),
+    path("perfil/<int:perfil_id>/mi-lista/<int:titulo_id>/", views.toggle_mi_lista, name="toggle_mi_lista"),
 ]
