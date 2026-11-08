@@ -8,16 +8,18 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 
 def idioma_default():
     try:
-        return Idioma.objects.get(id=1)
+        return Idioma.objects.get_or_create(id=1, nombre="Español")[0].pk
     except Exception as e:
-        print("no existen idiomas cargados y por ende no hay default" + e)
+        print("no existen idiomas cargados y por ende no hay default")
+        print(e)
 
 
 def pais_default():
     try:
-        return Pais.objects.get(id=1)
+        return Pais.objects.get_or_create(id=1, nombre="Argentina")[0].pk
     except Exception as e:
-        print("no existen paises cargados y por ende no hay default" + e)
+        print("no existen paises cargados y por ende no hay default")
+        print(e)
 
 # instance es el objeto Imagen que se está guardando
 def imagen_upload_path(instance, filename):
@@ -370,7 +372,7 @@ class Precio(models.Model):
 class Suscripcion(models.Model):
     usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='suscripciones')
     plan = models.ForeignKey(Plan, on_delete=models.PROTECT, related_name='suscripciones')
-    tarjeta = models.ForeignKey(Tarjeta, on_delete=models.PROTECT, related_name='suscripciones')
+    tarjeta = models.ForeignKey(Tarjeta, on_delete=models.CASCADE, related_name='suscripciones')
     fecha_inscripcion = models.DateField()
     fecha_vigencia = models.DateField(blank=True, null=True)
     fecha_cancelacion = models.DateField(blank=True, null=True)
@@ -398,11 +400,11 @@ class EstadoCobro(models.Model):
 
 class Cobro(models.Model):
     # num_factura es el id automatico de django
-    suscripcion = models.ForeignKey(Suscripcion, on_delete=models.PROTECT, related_name='cobros')
+    suscripcion = models.ForeignKey(Suscripcion, on_delete=models.CASCADE, related_name='cobros')
     fecha_cobro = models.DateField()
-    estado_cobro = models.ForeignKey(EstadoCobro, on_delete=models.PROTECT, related_name='cobros')
+    estado_cobro = models.ForeignKey(EstadoCobro, on_delete=models.CASCADE, related_name='cobros')
     # se copia de la suscripcion al momento del cobro, para dejar historial
-    tarjeta = models.ForeignKey(Tarjeta, on_delete=models.PROTECT, related_name='cobros')
+    tarjeta = models.ForeignKey(Tarjeta, on_delete=models.CASCADE, related_name='cobros')
     numero_autorizacion = models.CharField(max_length=100, blank=True, null=True)
     monto = models.FloatField()
 
@@ -411,7 +413,7 @@ class Cobro(models.Model):
         verbose_name_plural = 'Cobros'
 
     def __str__(self):
-        return f'Factura {self.num_factura} - {self.suscripcion}'
+        return f'Factura {self.id} - {self.suscripcion}'
      
 class Imagen(Model):
     id = BigAutoField(primary_key=True)

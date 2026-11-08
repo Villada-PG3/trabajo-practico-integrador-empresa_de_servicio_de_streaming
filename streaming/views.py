@@ -1,7 +1,7 @@
 from django.shortcuts import render, redirect
 from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.contrib import messages
-import json
+import calendar
 from django.db.models import Count, F
 from django.utils.dateparse import parse_date
 from .models import Idioma, Precio, Suscripcion, Plan, Tarjeta, MarcaTarjeta, MetodoPago, Cobro, EstadoCobro, Perfil, TipoPerfil, Imagen
@@ -119,19 +119,20 @@ def registro_view(request):
   if request.method == 'POST':
     email = request.POST.get('email')
     password = request.POST.get('password')
+    password2 = request.POST.get('password2')
     telefono = request.POST.get('telefono')
+
+    if password != password2:
+        messages.error(request, 'Las contraseñas no coinciden')
 
     if User.objects.filter(email=email).exists():
       messages.error(request, 'Ya existe una cuenta asociada a este correo.')
     else:
-      idioma_predeterminado = Idioma.objects.first()
-
       user = User.objects.create_user(
           username=email,
           email=email,
           password=password,
           telefono=telefono,
-          idioma=idioma_predeterminado,  
       )
 
 
@@ -159,22 +160,45 @@ def pago_view(request):
         messages.error(request, 'Debes seleccionar un plan antes de proceder al pago.')
         return redirect('seleccionar_plan')
     
-    plan = Plan.objects.get(pk=plan_id)
+    plan = Plan.objects.get(id=plan_id)
+    
+    # nos van a hacer falta en el POST para redireccionar si hay errores
+    marcas = MarcaTarjeta.objects.all()
+    precio_obj = plan.precios.order_by('-fecha_inicio').first()
+    precio_monto = precio_obj.precio if precio_obj else 0.0
+    
+    context =  {
+        'plan': plan,
+        'precio_monto': precio_monto,
+        'marcas': marcas
+    }
     
     if request.method == 'POST':
-        nombre_titular = request.POST.get('nombre_titular')
         numero_tarjeta = request.POST.get('numero_tarjeta')
-        fecha_vencimiento = request.POST.get('fecha_vencimiento') # YYYY-MM-DD
+        fecha_vencimiento = request.POST.get('fecha_vencimiento') 
         marca_id = request.POST.get('marca_tarjeta')
+        
+        try:
+            mes, anio = fecha_vencimiento.split("/")
+            ultimo_dia = calendar.monthrange(int(anio), int(mes))[1]
+            vencimiento = date(int(anio), int(mes), ultimo_dia)
+        except ValueError:
+            messages.error(request, "Usá el formato MM/AAAA, por ejemplo 08/2028")
+            context["datos"] = request.POST
+            return render(request, 'pago.html', context=context)
+            
+        if vencimiento < date.today():
+            messages.error(request, "La tarjeta está vencida.")
+            context["datos"] = request.POST
+            return render(request, 'pago.html', context=context)
         
         marca = MarcaTarjeta.objects.get(pk=marca_id)
         metodo, _ = MetodoPago.objects.get_or_create(nombre='Tarjeta de Crédito/Débito')
         
-        # 1. Guardar tarjeta (solo guardando los últimos 4 dígitos como está en su modelo)
+        # Guardar la tarjeta
         tarjeta = Tarjeta.objects.create(
             numero=numero_tarjeta[-4:],
-            nombre_titular=nombre_titular,
-            fecha_vencimiento=parse_date(fecha_vencimiento) or date.today(),
+            fecha_vencimiento=vencimiento,
             marca_tarjeta=marca,
             metodo_pago=metodo,
             habilitado=True
@@ -182,6 +206,7 @@ def pago_view(request):
         
         # 2. Crear Suscripción activa
         suscripcion = Suscripcion.objects.create(
+            tarjeta=tarjeta,
             usuario=request.user,
             plan=plan,
             fecha_inscripcion=date.today(),
@@ -194,7 +219,6 @@ def pago_view(request):
         monto = precio_actual.precio if precio_actual else 0.0
         
         Cobro.objects.create(
-            num_factura=3000000000 + Cobro.objects.count() + 1,
             suscripcion=suscripcion,
             fecha_cobro=date.today(),
             estado_cobro=estado_aprobado,
@@ -206,15 +230,7 @@ def pago_view(request):
         messages.success(request, f'¡Suscripción al plan {plan.nombre} realizada con éxito!')
         return redirect('seleccionar_perfil')
 
-    marcas = MarcaTarjeta.objects.all()
-    precio_obj = plan.precios.order_by('-fecha_inicio').first()
-    precio_monto = precio_obj.precio if precio_obj else 0.0
-
-    return render(request, 'pago.html', {
-        'plan': plan,
-        'precio_monto': precio_monto,
-        'marcas': marcas
-    })
+    return render(request, 'pago.html', context=context)
 
 def seleccionar_perfil_view(request):
     """Pantalla para elegir quién está viendo (Perfiles del usuario)"""
