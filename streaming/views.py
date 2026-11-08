@@ -4,7 +4,7 @@ from django.contrib import messages
 import json
 from django.db.models import Count, F
 from django.utils.dateparse import parse_date
-from .models import Idioma, Precio, Suscripcion, Plan, Tarjeta, MarcaTarjeta, MetodoPago, Cobro, EstadoCobro
+from .models import Idioma, Precio, Suscripcion, Plan, Tarjeta, MarcaTarjeta, MetodoPago, Cobro, EstadoCobro, Perfil, TipoPerfil, Imagen
 from django.contrib.auth.models import User
 from datetime import date
 from django.utils import timezone
@@ -26,7 +26,7 @@ def login_view(request):
         if user is not None:
             login(request, user)
             # Redirige a la pantalla de selección de perfil una vez autenticado
-            return redirect('home')
+            return redirect('seleccionar_perfil')
         else:
             messages.error(request, 'Usuario o contraseña incorrectos.')
     
@@ -204,7 +204,7 @@ def pago_view(request):
         )
         
         messages.success(request, f'¡Suscripción al plan {plan.nombre} realizada con éxito!')
-        return redirect('home')
+        return redirect('seleccionar_perfil')
 
     marcas = MarcaTarjeta.objects.all()
     precio_obj = plan.precios.order_by('-fecha_inicio').first()
@@ -220,3 +220,26 @@ def seleccionar_perfil_view(request):
     """Pantalla para elegir quién está viendo (Perfiles del usuario)"""
     perfiles = request.user.perfil_set.all() if hasattr(request.user, 'perfil_set') else []
     return render(request, 'seleccionar_perfil.html', {'perfiles': perfiles})
+
+
+def seleccionar_perfil_view(request):
+    """Muestra los perfiles creados del usuario autenticado"""
+    perfiles = Perfil.objects.filter(usuario=request.user)
+    return render(request, 'seleccionar_perfil.html', {'perfiles': perfiles})
+
+def crear_perfil_view(request):
+    """Crea un nuevo perfil para el usuario autenticado"""
+    if request.method == 'POST':
+        nombre = request.POST.get('nombre')
+        tipo_default = TipoPerfil.objects.first()
+        imagen_default = Imagen.objects.first()
+        
+        Perfil.objects.create(
+            nombre=nombre,
+            usuario=request.user,
+            tipo_perfil=tipo_default,
+            imagen=imagen_default
+        )
+        messages.success(request, f'Perfil "{nombre}" creado con éxito.')
+    return redirect('seleccionar_perfil')
+
