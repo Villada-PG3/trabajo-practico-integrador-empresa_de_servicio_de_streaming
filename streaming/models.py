@@ -162,6 +162,8 @@ class Subtitulo(models.Model):
 
 
 class IdiomaContenido(models.Model):
+    nombre = models.CharField(max_length=255, blank=True)
+    descripcion = models.TextField(blank=True, null=True)
     imagen = models.FileField(upload_to='demo/episodios/', blank=True)
     idioma = models.ForeignKey(Idioma, on_delete=models.CASCADE, related_name='idioma_contenidos')
     contenido = models.ForeignKey(Contenido, on_delete=models.CASCADE, related_name='idioma_contenidos')

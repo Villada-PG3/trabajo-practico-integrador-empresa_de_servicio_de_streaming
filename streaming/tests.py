@@ -825,6 +825,8 @@ class HomeCarouselesTests(TestCase):
             'Historia para calificar',
             self.pelicula,
             con_contenido=True,
+            categoria=self.accion,
+            edad_minima=13,
         )
         titulo.descripcion_original = 'Una historia para probar la ficha.'
         titulo.save(update_fields=['descripcion_original'])
@@ -833,6 +835,14 @@ class HomeCarouselesTests(TestCase):
             'Imagen de la historia',
             'demo/banners/historia.svg',
         )
+        persona = Elenco.objects.create(
+            pais=self.pais,
+            nombre='Actriz',
+            apellido='De prueba',
+        )
+        rol = Rol.objects.create(nombre='Actriz')
+        rol_elenco = RolElenco.objects.create(rol=rol, elenco=persona)
+        TituloRolElenco.objects.create(titulo=titulo, rol_elenco=rol_elenco)
         usuario = Usuario.objects.create_user(
             username='ficha-titulo@example.com',
             email='ficha-titulo@example.com',
@@ -847,6 +857,12 @@ class HomeCarouselesTests(TestCase):
         self.assertContains(respuesta, 'role="dialog" aria-modal="true"')
         self.assertContains(respuesta, 'Imagen de la historia')
         self.assertContains(respuesta, 'Una historia para probar la ficha.')
+        self.assertContains(respuesta, 'data-title-cast="Actriz De prueba"')
+        self.assertContains(respuesta, 'data-title-categories="Acción"')
+        self.assertContains(respuesta, 'data-title-age="+13"')
+        self.assertContains(respuesta, 'data-title-details-cast')
+        self.assertContains(respuesta, 'data-title-details-categories')
+        self.assertContains(respuesta, 'data-title-details-age')
         self.assertContains(
             respuesta,
             reverse('calificar_titulo', args=[titulo.pk]),
@@ -858,6 +874,193 @@ class HomeCarouselesTests(TestCase):
             f'data-title-average-rating="{titulo.pk}"',
         )
         self.assertNotContains(respuesta, 'Promedio de 3 de 5 estrellas')
+
+    def test_detalle_lista_contenidos_ordenados_con_imagenes_del_idioma_preferido(self):
+        ingles = Idioma.objects.create(nombre='English')
+        titulo = self.crear_titulo(
+            'Serie con episodios',
+            self.serie,
+            con_contenido=False,
+        )
+        segundo = Contenido.objects.create(
+            nombre='Episodio dos',
+            descripcion='Descripción del episodio dos.',
+            seccion=1,
+            orden=2,
+            duracion_segundos=2700,
+            titulo=titulo,
+        )
+        extra_cero = Contenido.objects.create(
+            nombre='Escena extra',
+            descripcion='Contenido extra de la sección cero.',
+            seccion=0,
+            orden=1,
+            duracion_segundos=120,
+            titulo=titulo,
+        )
+        extra_negativo = Contenido.objects.create(
+            nombre='Avance',
+            descripcion='Contenido extra de la sección negativa.',
+            seccion=-1,
+            orden=1,
+            duracion_segundos=60,
+            titulo=titulo,
+        )
+        primero = Contenido.objects.create(
+            nombre='Episodio uno',
+            descripcion='Descripción del episodio uno.',
+            seccion=1,
+            orden=1,
+            duracion_segundos=3600,
+            titulo=titulo,
+        )
+        final = Contenido.objects.create(
+            nombre='Especial',
+            descripcion='Descripción del especial.',
+            seccion=2,
+            orden=1,
+            duracion_segundos=30,
+            titulo=titulo,
+        )
+        IdiomaContenido.objects.create(
+            contenido=primero,
+            idioma=self.idioma,
+            nombre='Episodio uno localizado',
+            descripcion='Descripción localizada del episodio uno.',
+            imagen='demo/episodios/episodio-uno-es.svg',
+        )
+        IdiomaContenido.objects.create(
+            contenido=primero,
+            idioma=ingles,
+            imagen='demo/episodios/episode-one-en.svg',
+        )
+        IdiomaContenido.objects.create(
+            contenido=segundo,
+            idioma=ingles,
+            imagen='demo/episodios/episode-two-en.svg',
+        )
+        IdiomaContenido.objects.create(
+            contenido=extra_cero,
+            idioma=self.idioma,
+            imagen='demo/episodios/escena-extra.svg',
+        )
+        IdiomaContenido.objects.create(
+            contenido=extra_negativo,
+            idioma=self.idioma,
+            imagen='demo/episodios/avance.svg',
+        )
+        IdiomaContenido.objects.create(
+            contenido=final,
+            idioma=self.idioma,
+            imagen='demo/episodios/especial-es.svg',
+        )
+        usuario = Usuario.objects.create_user(
+            username='contenido-detalle@example.com',
+            email='contenido-detalle@example.com',
+            password='UnaClave-larga-2026!',
+            idioma=self.idioma,
+        )
+        self.autenticar_con_perfil(usuario)
+
+        respuesta = self.client.get(reverse('home'))
+
+        titulo_renderizado = next(
+            titulo_en_lista
+            for carrusel in respuesta.context['carruseles']
+            for titulo_en_lista in carrusel['titulos']
+            if titulo_en_lista.pk == titulo.pk
+        )
+        contenidos = titulo_renderizado.contenidos_detalle
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(
+            [contenido['nombre'] for contenido in contenidos],
+            [
+                'Avance',
+                'Escena extra',
+                'Episodio uno localizado',
+                'Episodio dos',
+                'Especial',
+            ],
+        )
+        self.assertEqual(
+            [contenido['seccion'] for contenido in contenidos],
+            [-1, 0, 1, 1, 2],
+        )
+        self.assertTrue(all(
+            contenido['mostrar_numero_episodio']
+            for contenido in contenidos
+        ))
+        self.assertEqual(
+            [contenido['imagen'] for contenido in contenidos],
+            [
+                '/media/demo/episodios/avance.svg',
+                '/media/demo/episodios/escena-extra.svg',
+                '/media/demo/episodios/episodio-uno-es.svg',
+                '/media/demo/episodios/episode-two-en.svg',
+                '/media/demo/episodios/especial-es.svg',
+            ],
+        )
+        self.assertEqual(
+            [contenido['duracion'] for contenido in contenidos],
+            ['1 min', '2 min', '1 h', '45 min', '30 s'],
+        )
+        self.assertEqual(
+            contenidos[2]['descripcion'],
+            'Descripción localizada del episodio uno.',
+        )
+        self.assertEqual(
+            contenidos[3]['descripcion'],
+            'Descripción del episodio dos.',
+        )
+        self.assertContains(respuesta, 'data-title-details-contents')
+        self.assertContains(respuesta, 'data-title-contents=')
+
+        respuesta_busqueda = self.client.get(
+            reverse('buscar_titulos'),
+            {'q': 'Serie con episodios'},
+        )
+        self.assertEqual(respuesta_busqueda.status_code, 200)
+        resultado_busqueda = respuesta_busqueda.json()['resultados'][0]
+        self.assertEqual(
+            [contenido['nombre'] for contenido in resultado_busqueda['contenidos']],
+            [
+                'Avance',
+                'Escena extra',
+                'Episodio uno localizado',
+                'Episodio dos',
+                'Especial',
+            ],
+        )
+
+        self.client.post(reverse('toggle_mi_lista', args=[titulo.pk]))
+        respuesta_lista = self.client.get(reverse('mi_lista'))
+        self.assertEqual(respuesta_lista.status_code, 200)
+        self.assertContains(respuesta_lista, 'data-title-contents=')
+
+    def test_detalle_de_pelicula_no_agrega_numero_de_episodio(self):
+        titulo = self.crear_titulo(
+            'Película con contenido',
+            self.pelicula,
+            con_contenido=True,
+        )
+        usuario = Usuario.objects.create_user(
+            username='pelicula-sin-episodio@example.com',
+            email='pelicula-sin-episodio@example.com',
+            password='UnaClave-larga-2026!',
+        )
+        self.autenticar_con_perfil(usuario)
+
+        respuesta = self.client.get(reverse('home'))
+        titulo_renderizado = next(
+            titulo_en_lista
+            for carrusel in respuesta.context['carruseles']
+            for titulo_en_lista in carrusel['titulos']
+            if titulo_en_lista.pk == titulo.pk
+        )
+
+        self.assertFalse(
+            titulo_renderizado.contenidos_detalle[0]['mostrar_numero_episodio']
+        )
 
     def test_puntuacion_de_titulo_se_guarda_en_incrementos_de_media_estrella(self):
         titulo = self.crear_titulo(
@@ -1069,7 +1272,19 @@ class HomeCarouselesTests(TestCase):
             'Northern Stories',
             self.serie,
             con_contenido=True,
+            categoria=self.accion,
+            edad_minima=13,
         )
+        sin_traduccion.descripcion_original = 'Una descripción para la búsqueda.'
+        sin_traduccion.save(update_fields=['descripcion_original'])
+        persona = Elenco.objects.create(
+            pais=self.pais,
+            nombre='Actor',
+            apellido='De prueba',
+        )
+        rol = Rol.objects.create(nombre='Actor')
+        rol_elenco = RolElenco.objects.create(rol=rol, elenco=persona)
+        TituloRolElenco.objects.create(titulo=sin_traduccion, rol_elenco=rol_elenco)
         edad_restringida = self.crear_titulo(
             'Northern Adults',
             self.pelicula,
@@ -1115,6 +1330,10 @@ class HomeCarouselesTests(TestCase):
         self.assertFalse(resultado_disponible['en_mi_lista'])
         self.assertEqual(resultado_disponible['puntuacion_perfil'], '')
         self.assertIsNone(resultado_disponible['porcentaje_promedio'])
+        self.assertEqual(resultado_disponible['descripcion'], 'Una descripción para la búsqueda.')
+        self.assertEqual(resultado_disponible['elenco'], 'Actor De prueba')
+        self.assertEqual(resultado_disponible['categorias'], 'Acción')
+        self.assertEqual(resultado_disponible['edad'], '+13')
         self.assertEqual(
             resultado_disponible['rating_url'],
             reverse('calificar_titulo', args=[sin_traduccion.pk]),

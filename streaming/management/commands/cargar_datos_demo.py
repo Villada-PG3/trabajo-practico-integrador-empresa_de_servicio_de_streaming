@@ -395,6 +395,15 @@ class Command(BaseCommand):
                 idioma=espanol,
                 contenido=contenido,
             )
+            campos_idioma_contenido = []
+            if not idioma_contenido.nombre:
+                idioma_contenido.nombre = contenido.nombre
+                campos_idioma_contenido.append('nombre')
+            if not idioma_contenido.descripcion:
+                idioma_contenido.descripcion = contenido.descripcion or ''
+                campos_idioma_contenido.append('descripcion')
+            if campos_idioma_contenido:
+                idioma_contenido.save(update_fields=campos_idioma_contenido)
             for calidad in (calidad_hd, calidad_full_hd):
                 CalidadIdiomaContenido.objects.get_or_create(
                     idioma_contenido=idioma_contenido,

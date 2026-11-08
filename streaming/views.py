@@ -1,3 +1,4 @@
+import json
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from django.contrib import messages
@@ -35,6 +36,7 @@ from .models import (
     Categoria,
     Calificacion,
     Contenido,
+    IdiomaContenido,
     IdiomaTitulo,
     Plan,
     Perfil,
@@ -98,6 +100,117 @@ def ordenar_categorias_titulo(titulos, categoria_prioritaria=None):
         titulo.clasificacion_edad = (
             'ATP' if edad_minima == 0 else f'+{edad_minima}'
         ) if edad_minima is not None else None
+    return titulos
+
+
+def asignar_metadatos_detalle(titulos):
+    for titulo in titulos:
+        elenco = []
+        for relacion in titulo.titulo_rol_elencos.all():
+            persona = relacion.rol_elenco.elenco
+            nombre = f'{persona.nombre} {persona.apellido}'.strip()
+            if nombre not in elenco:
+                elenco.append(nombre)
+        titulo.elenco_detalle = ', '.join(elenco)
+        categorias = [
+            relacion.categoria
+            for relacion in titulo.titulo_categorias.all()
+        ]
+        titulo.categorias_detalle = ', '.join(
+            categoria.nombre
+            for categoria in sorted(
+                categorias,
+                key=lambda categoria: categoria.nombre.casefold(),
+            )
+        )
+        edad_minima = titulo.edad_minima
+        titulo.clasificacion_edad = (
+            'ATP' if edad_minima == 0 else f'+{edad_minima}'
+        ) if edad_minima is not None else ''
+    return titulos
+
+
+def prefetch_contenidos_detalle(prefix=''):
+    imagenes_idioma = (
+        IdiomaContenido.objects
+        .select_related('idioma')
+        .order_by('idioma__nombre', 'pk')
+    )
+    return Prefetch(
+        f'{prefix}contenidos',
+        queryset=Contenido.objects.order_by('seccion', 'orden', 'pk').prefetch_related(
+            Prefetch(
+                'idioma_contenidos',
+                queryset=imagenes_idioma,
+                to_attr='imagenes_idioma_catalogo',
+            )
+        ),
+        to_attr='contenidos_catalogo',
+    )
+
+
+def asignar_contenidos_detalle(titulos, idioma_id=None):
+    for titulo in titulos:
+        mostrar_numero_episodio = not titulo.tipo_titulo.nombre.casefold().startswith('pel')
+        contenidos = getattr(titulo, 'contenidos_catalogo', None)
+        if contenidos is None:
+            contenidos = list(titulo.contenidos.all().order_by('seccion', 'orden', 'pk'))
+
+        titulo.contenidos_detalle = []
+        for contenido in contenidos:
+            imagenes = getattr(contenido, 'imagenes_idioma_catalogo', [])
+            imagen_localizada = next(
+                (imagen for imagen in imagenes if imagen.idioma_id == idioma_id),
+                None,
+            ) if idioma_id is not None else None
+            idioma_contenido = imagen_localizada
+            imagen_idioma = next(
+                (localizacion for localizacion in imagenes if localizacion.imagen),
+                None,
+            )
+            imagen = (
+                imagen_localizada
+                if imagen_localizada and imagen_localizada.imagen
+                else imagen_idioma
+            )
+            nombre = (
+                idioma_contenido.nombre.strip()
+                if idioma_contenido and idioma_contenido.nombre.strip()
+                else contenido.nombre
+            )
+            descripcion = (
+                (idioma_contenido.descripcion or '').strip()
+                if idioma_contenido and (idioma_contenido.descripcion or '').strip()
+                else (contenido.descripcion or '').strip()
+            )
+            duracion_segundos = contenido.duracion_segundos
+            duracion = ''
+            if duracion_segundos is not None:
+                if duracion_segundos < 60:
+                    duracion = f'{duracion_segundos} s'
+                else:
+                    total_minutos = (duracion_segundos + 30) // 60
+                    horas, minutos = divmod(total_minutos, 60)
+                    duracion = ' '.join(
+                        parte for parte in (
+                            f'{horas} h' if horas else '',
+                            f'{minutos} min' if minutos else '',
+                        ) if parte
+                    )
+
+            titulo.contenidos_detalle.append({
+                'seccion': contenido.seccion,
+                'orden': contenido.orden,
+                'nombre': nombre,
+                'descripcion': descripcion,
+                'duracion': duracion,
+                'imagen': imagen.imagen.url if imagen else '',
+                'mostrar_numero_episodio': mostrar_numero_episodio,
+            })
+        titulo.contenidos_detalle_json = json.dumps(
+            titulo.contenidos_detalle,
+            ensure_ascii=False,
+        )
     return titulos
 
 
@@ -237,11 +350,7 @@ def home(request):
         queryset=IdiomaTitulo.objects.select_related('idioma').order_by('idioma__nombre', 'id'),
         to_attr='idiomas_texto',
     )
-    contenidos_catalogo = Prefetch(
-        'contenidos',
-        queryset=Contenido.objects.order_by('id'),
-        to_attr='contenidos_catalogo',
-    )
+    contenidos_catalogo = prefetch_contenidos_detalle()
     relaciones_elenco = 'titulo_rol_elencos__rol_elenco__elenco'
     titulos_query = Titulo.objects.filter(contenidos__isnull=False)
     titulo_seleccionado = request.GET.get('titulo')
@@ -397,6 +506,7 @@ def home(request):
                 )
                 .prefetch_related(
                     'titulo_categorias__categoria',
+                    relaciones_elenco,
                     imagenes_catalogo,
                     textos_catalogo,
                     contenidos_catalogo,
@@ -415,6 +525,7 @@ def home(request):
                 titulos_mi_lista,
                 getattr(request.user, 'idioma_id', None),
             )
+            asignar_metadatos_detalle(titulos_mi_lista)
             if titulos_mi_lista:
                 carruseles.append({
                     'etiqueta': 'Mi Lista',
@@ -516,6 +627,11 @@ def home(request):
         for titulo in carrusel['titulos']
     ]
     titulos_en_pantalla.extend(banner['titulo'] for banner in banners)
+    asignar_metadatos_detalle(titulos_en_pantalla)
+    asignar_contenidos_detalle(
+        titulos_en_pantalla,
+        getattr(request.user, 'idioma_id', None),
+    )
     asignar_promedio_estrellas(titulos_en_pantalla)
     puntuaciones_perfil = {}
     if perfil_activo is not None:
@@ -608,6 +724,11 @@ def buscar_titulos_view(request):
         .select_related('tipo_titulo')
         .distinct()
         .order_by('nombre_busqueda', 'pk')
+        .prefetch_related(
+            'titulo_categorias__categoria',
+            'titulo_rol_elencos__rol_elenco__elenco',
+            prefetch_contenidos_detalle(),
+        )
     )
     titulos_guardados = set(
         Porver.objects.filter(
@@ -616,6 +737,9 @@ def buscar_titulos_view(request):
         ).values_list('perfil_titulo__titulo_id', flat=True)
     )
     resultados_busqueda = list(titulos)
+    asignar_textos_titulo(resultados_busqueda, idioma_id)
+    asignar_metadatos_detalle(resultados_busqueda)
+    asignar_contenidos_detalle(resultados_busqueda, idioma_id)
     asignar_promedio_estrellas(resultados_busqueda)
     puntuaciones_perfil = dict(
         PerfilTitulo.objects.filter(perfil=perfil_activo)
@@ -640,7 +764,11 @@ def buscar_titulos_view(request):
                     if titulo.porcentaje_promedio is not None else None
                 ),
                 'puntuacion_perfil': str(puntuaciones_perfil.get(titulo.pk) or ''),
-                'descripcion': titulo.descripcion_original or '',
+                'descripcion': titulo.descripcion_mostrar or '',
+                'elenco': titulo.elenco_detalle,
+                'categorias': titulo.categorias_detalle,
+                'edad': titulo.clasificacion_edad,
+                'contenidos': titulo.contenidos_detalle,
             }
             for titulo in resultados_busqueda
         ],
@@ -842,21 +970,27 @@ def mi_lista_view(request):
             'perfil_titulo__perfil',
             'perfil_titulo__calificacion',
         )
-        .prefetch_related(imagenes_titulo, textos_titulo)
+        .prefetch_related(
+            'perfil_titulo__titulo__titulo_categorias__categoria',
+            'perfil_titulo__titulo__titulo_rol_elencos__rol_elenco__elenco',
+            imagenes_titulo,
+            textos_titulo,
+            prefetch_contenidos_detalle(prefix='perfil_titulo__titulo__'),
+        )
         .order_by(*ordenamientos[orden])
     )
     titulos_por_ver_lista = list(titulos_por_ver)
-    asignar_promedio_estrellas([
+    titulos_lista = [
         porver.perfil_titulo.titulo
         for porver in titulos_por_ver_lista
-    ])
+    ]
+    asignar_promedio_estrellas(titulos_lista)
     asignar_textos_titulo(
-        [
-            porver.perfil_titulo.titulo
-            for porver in titulos_por_ver_lista
-        ],
+        titulos_lista,
         request.user.idioma_id,
     )
+    asignar_metadatos_detalle(titulos_lista)
+    asignar_contenidos_detalle(titulos_lista, request.user.idioma_id)
     if orden == 'alfabetico':
         titulos_por_ver_lista.sort(
             key=lambda porver: (

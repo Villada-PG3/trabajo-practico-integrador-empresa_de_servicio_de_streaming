@@ -5,8 +5,21 @@
         const name = titleDetails.querySelector('[data-title-details-name-text]');
         const average = titleDetails.querySelector('[data-title-details-average]');
         const description = titleDetails.querySelector('[data-title-details-description]');
+        const cast = titleDetails.querySelector('[data-title-details-cast]');
+        const castRow = titleDetails.querySelector('[data-title-details-cast-row]');
+        const categories = titleDetails.querySelector('[data-title-details-categories]');
+        const categoriesRow = titleDetails.querySelector(
+            '[data-title-details-categories-row]',
+        );
+        const age = titleDetails.querySelector('[data-title-details-age]');
+        const ageRow = titleDetails.querySelector('[data-title-details-age-row]');
         const listForm = titleDetails.querySelector('[data-title-details-list]');
         const listButton = titleDetails.querySelector('[data-title-details-list-button]');
+        const contentsSection = titleDetails.querySelector('[data-title-details-contents]');
+        const contentsFilters = titleDetails.querySelector(
+            '[data-title-details-content-filters]',
+        );
+        const contentsList = titleDetails.querySelector('[data-title-details-content-list]');
         const ratingForm = titleDetails.querySelector('[data-title-rating-form]');
         const ratingInput = ratingForm.querySelector('[data-title-rating-value]');
         const ratingLabel = ratingForm.querySelector('[data-title-rating-label]');
@@ -62,13 +75,109 @@
             });
         };
 
+        const renderContents = (contents) => {
+            contentsSection.hidden = !contents.length;
+            contentsFilters.replaceChildren();
+            const seasons = [...new Set(
+                contents.map((content) => Number(content.seccion))
+                    .filter((section) => section >= 1),
+            )].sort((first, second) => first - second);
+            const extras = contents.some((content) => Number(content.seccion) <= 0);
+            const showFilters = seasons.length > 1 || extras;
+            contentsFilters.hidden = !showFilters;
+
+            const renderItems = (section) => {
+                contentsList.replaceChildren();
+                const filteredContents = contents.filter((content) => (
+                    section === 'extras'
+                        ? Number(content.seccion) <= 0
+                        : Number(content.seccion) === section
+                ));
+                filteredContents.forEach((content) => {
+                    const item = document.createElement('article');
+                    item.className = 'title-details-content-item';
+
+                    if (content.imagen) {
+                        const contentImage = document.createElement('img');
+                        contentImage.className = 'title-details-content-image';
+                        contentImage.alt = '';
+                        contentImage.src = content.imagen;
+                        item.append(contentImage);
+                    } else {
+                        const placeholder = document.createElement('span');
+                        placeholder.className = 'title-details-content-image-placeholder';
+                        placeholder.setAttribute('aria-hidden', 'true');
+                        placeholder.textContent = '▶';
+                        item.append(placeholder);
+                    }
+
+                    const copy = document.createElement('div');
+                    copy.className = 'title-details-content-copy';
+                    const heading = document.createElement('h4');
+                    heading.className = 'fw-semibold mb-1';
+                    heading.textContent = content.mostrar_numero_episodio
+                        ? `${content.nombre} - Episodio ${content.orden}`
+                        : content.nombre;
+                    copy.append(heading);
+                    if (content.descripcion) {
+                        const contentDescription = document.createElement('p');
+                        contentDescription.className = 'small text-white-50 mb-0';
+                        contentDescription.textContent = content.descripcion;
+                        copy.append(contentDescription);
+                    }
+                    item.append(copy);
+
+                    if (content.duracion) {
+                        const duration = document.createElement('span');
+                        duration.className = 'title-details-content-duration';
+                        duration.textContent = content.duracion;
+                        item.append(duration);
+                    }
+                    contentsList.append(item);
+                });
+            };
+
+            if (!showFilters) {
+                renderItems(seasons[0] ?? 'extras');
+                return;
+            }
+
+            const options = [
+                ...seasons.map((season) => ({
+                    key: String(season),
+                    label: `Temporada ${season}`,
+                    section: season,
+                })),
+                ...(extras ? [{ key: 'extras', label: 'Extras', section: 'extras' }] : []),
+            ];
+            options.forEach((option, index) => {
+                const filter = document.createElement('button');
+                filter.type = 'button';
+                filter.className = 'title-details-content-filter';
+                filter.setAttribute('role', 'tab');
+                filter.setAttribute('aria-selected', String(index === 0));
+                filter.setAttribute('aria-controls', 'title-details-content-list');
+                filter.textContent = option.label;
+                filter.addEventListener('click', () => {
+                    contentsFilters.querySelectorAll('[role="tab"]').forEach((tab) => {
+                        tab.setAttribute('aria-selected', String(tab === filter));
+                    });
+                    renderItems(option.section);
+                });
+                contentsFilters.append(filter);
+            });
+            renderItems(options[0].section);
+        };
+
         const showDetails = (button) => {
             opener = button;
             const {
-                titleId, titleName, titleDescription, titleImage,
+                titleId, titleName, titleDescription, titleCast, titleCategories,
+                titleAge, titleImage,
                 titleRating, titleAverage, titleAveragePercent, titleInList,
-                titleToggleUrl, titleRatingUrl,
+                titleToggleUrl, titleRatingUrl, titleContents,
             } = button.dataset;
+            renderContents(JSON.parse(titleContents || '[]'));
             name.textContent = titleName;
             average.classList.toggle('d-none', !titleAverage);
             average.setAttribute('aria-label', `Promedio de ${titleAveragePercent}%`);
@@ -78,6 +187,12 @@
                 average.replaceChildren();
             }
             description.textContent = titleDescription || 'Disfruta esta historia en RedFlix.';
+            cast.textContent = titleCast;
+            castRow.hidden = !titleCast;
+            categories.textContent = titleCategories;
+            categoriesRow.hidden = !titleCategories;
+            age.textContent = titleAge;
+            ageRow.hidden = !titleAge;
             image.hidden = !titleImage;
             image.src = titleImage || '';
             listForm.action = titleToggleUrl;

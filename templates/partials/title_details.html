@@ -8,15 +8,16 @@
         </button>
         <div class="title-details-image-wrap">
             <img class="title-details-image" data-title-details-image alt="" hidden>
+            <div class="title-details-image-caption">
+                <h2 class="title-details-name"
+                    id="title-details-name">
+                    <span data-title-details-name-text></span>
+                </h2>
+                <span class="average-rating-inline d-none"
+                      data-title-details-average></span>
+            </div>
         </div>
         <div class="title-details-content">
-            <h2 class="h3 fw-bold mb-2 d-flex align-items-center flex-wrap"
-                id="title-details-name">
-                <span data-title-details-name-text></span>
-                <span class="average-rating-inline d-none" data-title-details-average></span>
-            </h2>
-            <p class="text-white-50 mb-0" id="title-details-description"
-               data-title-details-description></p>
             <div class="title-details-actions">
                 <form method="post" class="m-0" data-list-toggle data-title-details-list>
                     {% csrf_token %}
@@ -44,6 +45,34 @@
                     <span class="small text-white-50" data-title-rating-status role="status"></span>
                 </form>
             </div>
+            <p class="text-white-50 mb-3" id="title-details-description"
+               data-title-details-description></p>
+            <dl class="title-details-metadata mb-0">
+                <div data-title-details-cast-row hidden>
+                    <dt>Elenco</dt>
+                    <dd data-title-details-cast></dd>
+                </div>
+                <div data-title-details-categories-row hidden>
+                    <dt>Categorías</dt>
+                    <dd data-title-details-categories></dd>
+                </div>
+                <div data-title-details-age-row hidden>
+                    <dt>Edad</dt>
+                    <dd data-title-details-age></dd>
+                </div>
+            </dl>
+            <section class="title-details-contents" data-title-details-contents hidden
+                     aria-labelledby="title-details-contents-heading">
+                <div class="title-details-contents-heading">
+                    <h3 class="h5 fw-semibold mb-0" id="title-details-contents-heading">
+                        Episodios y contenido
+                    </h3>
+                    <div class="title-details-content-filters" data-title-details-content-filters
+                         role="tablist" aria-label="Filtrar por temporada" hidden></div>
+                </div>
+                <div class="title-details-content-list" id="title-details-content-list"
+                     data-title-details-content-list role="tabpanel" aria-live="polite"></div>
+            </section>
         </div>
     </article>
 </section>
