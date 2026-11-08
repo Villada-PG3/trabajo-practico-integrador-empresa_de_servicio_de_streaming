@@ -105,6 +105,21 @@
                         {% else %}
                             <span class="my-list-poster-mark" aria-hidden="true">{{ titulo.nombre_mostrar|slice:":1"|upper }}</span>
                         {% endif %}
+                        <button class="title-details-button" type="button"
+                                data-title-details-open
+                                data-title-id="{{ titulo.pk }}"
+                                data-title-name="{{ titulo.nombre_mostrar }}"
+                                data-title-description="{{ titulo.descripcion_mostrar|default:'' }}"
+                                data-title-image="{% if imagen and imagen.imagen %}{{ imagen.imagen.url }}{% endif %}"
+                                data-title-rating="{{ porver.perfil_titulo.calificacion.estrellas|default:'2.5' }}"
+                                data-title-average="{{ titulo.estrellas_promedio_redondeado|default:3 }}"
+                                data-title-in-list="true"
+                                data-title-toggle-url="{% url 'toggle_mi_lista' titulo.pk %}"
+                                data-title-rating-url="{% url 'calificar_titulo' titulo.pk %}"
+                                aria-label="Ver detalles y calificar: {{ titulo.nombre_mostrar }}"
+                                title="Detalles y calificación">
+                            <i class="bi bi-list" aria-hidden="true"></i>
+                        </button>
                     </div>
                     <form method="post" action="{% url 'toggle_mi_lista' titulo.pk %}"
                           class="my-list-toggle" data-my-list-remove>
@@ -118,7 +133,10 @@
                         <span class="visually-hidden" data-my-list-error role="alert"></span>
                     </form>
                     <div class="pt-2">
-                        <h2 class="h6 fw-semibold mb-1">{{ titulo.nombre_mostrar }}</h2>
+                        <h2 class="h6 fw-semibold mb-1">
+                            {{ titulo.nombre_mostrar }}
+                            {% include "partials/promedio_estrellas.html" with titulo=titulo %}
+                        </h2>
                         <p class="small text-white-50 mb-1">{{ titulo.tipo_titulo.nombre }}</p>
                         <p class="small text-white-50 mb-0">
                             Agregado {{ porver.fecha_agregado|date:"d/m/Y" }}

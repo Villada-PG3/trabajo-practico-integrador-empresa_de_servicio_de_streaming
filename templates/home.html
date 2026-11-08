@@ -22,6 +22,12 @@
         transition: opacity 1.1s ease-in-out;
     }
 
+    .featured-banner-slide--without-image {
+        background:
+            radial-gradient(ellipse at 75% 35%, rgba(139, 34, 55, 0.62), transparent 48%),
+            linear-gradient(125deg, #30202a, #111827 62%, #101010);
+    }
+
     .featured-banner-slide.is-active {
         z-index: 1;
         opacity: 1;
@@ -289,6 +295,11 @@
         border-color: rgba(255, 255, 255, 0.45);
     }
 
+    .title-card:hover .title-details-button,
+    .title-card:focus-within .title-details-button {
+        opacity: 1;
+    }
+
     .title-poster::after {
         position: absolute;
         right: -2rem;
@@ -476,7 +487,7 @@
 {% if user.is_authenticated and banners %}
 <section class="featured-banner" data-featured-banner aria-label="Novedades">
     {% for banner in banners %}
-    <article class="featured-banner-slide{% if forloop.first %} is-active{% endif %}"
+    <article class="featured-banner-slide{% if not banner.imagen_url %} featured-banner-slide--without-image{% endif %}{% if forloop.first %} is-active{% endif %}"
              data-featured-slide
              aria-hidden="{% if forloop.first %}false{% else %}true{% endif %}">
         {% if banner.imagen_url %}
@@ -488,7 +499,10 @@
                 <p class="text-uppercase text-danger fw-bold mb-2">
                     Novedad{% if banner.titulo.fecha_estreno %} · {{ banner.titulo.fecha_estreno|date:"Y" }}{% endif %}
                 </p>
-                <h1 class="featured-banner-title mb-3">{{ banner.titulo.nombre_mostrar }}</h1>
+                <h1 class="featured-banner-title mb-3">
+                    {{ banner.titulo.nombre_mostrar }}
+                    {% include "partials/promedio_estrellas.html" with titulo=banner.titulo %}
+                </h1>
                 <p class="featured-banner-description fs-5 mb-3">
                     {{ banner.titulo.descripcion_mostrar|default:"Descubre una nueva historia para disfrutar en nuestra plataforma." }}
                 </p>
@@ -580,6 +594,11 @@
 
 {% if carruseles %}
 <section class="title-catalog" aria-label="Catálogo de títulos">
+    {% if categoria_seleccionada %}
+    <div class="title-carousel-heading px-4 mb-4">
+        <h2 class="h3 fw-bold mb-0">Catálogo de: {{ categoria_seleccionada.nombre }}</h2>
+    </div>
+    {% endif %}
     {% if not user.is_authenticated %}
         {% with populares=carruseles.0 %}
         <section class="popular-list" aria-labelledby="popular-list-title">
@@ -598,7 +617,10 @@
                         <span class="popular-poster-rank" aria-label="Puesto {{ forloop.counter }}">{{ forloop.counter }}</span>
                     </div>
                     <div class="pt-2">
-                        <h3 class="title-card-name h6 fw-semibold mb-1">{{ titulo.nombre_mostrar }}</h3>
+                        <h3 class="title-card-name h6 fw-semibold mb-1">
+                            {{ titulo.nombre_mostrar }}
+                            {% include "partials/promedio_estrellas.html" with titulo=titulo %}
+                        </h3>
                     </div>
                 </article>
                 {% endfor %}
@@ -633,6 +655,23 @@
                         {% else %}
                     <span class="title-poster-mark" aria-hidden="true">{{ titulo.nombre_mostrar|slice:":1"|upper }}</span>
                         {% endif %}
+                        {% if user.is_authenticated and perfil_activo %}
+                        <button class="title-details-button" type="button"
+                                data-title-details-open
+                                data-title-id="{{ titulo.pk }}"
+                                data-title-name="{{ titulo.nombre_mostrar }}"
+                                data-title-description="{{ titulo.descripcion_mostrar }}"
+                                data-title-image="{% if imagen and imagen.imagen %}{{ imagen.imagen.url }}{% endif %}"
+                                data-title-rating="{{ titulo.puntuacion_estrellas|default_if_none:'' }}"
+                                data-title-average="{{ titulo.estrellas_promedio_redondeado|default_if_none:'' }}"
+                                data-title-in-list="{{ titulo.en_mi_lista|yesno:'true,false' }}"
+                                data-title-toggle-url="{% url 'toggle_mi_lista' titulo.pk %}"
+                                data-title-rating-url="{% url 'calificar_titulo' titulo.pk %}"
+                                aria-label="Ver detalles y calificar: {{ titulo.nombre_mostrar }}"
+                                title="Detalles y calificación">
+                            <i class="bi bi-list" aria-hidden="true"></i>
+                        </button>
+                        {% endif %}
                     {% endwith %}
                     <span class="small fw-semibold text-white-50">{{ titulo.fecha_estreno|date:"Y" }}</span>
                     {% if carrusel.mostrar_top %}
@@ -653,7 +692,10 @@
                     {% endif %}
                 </div>
                 <div class="pt-2">
-                    <h3 class="title-card-name h6 fw-semibold mb-1">{{ titulo.nombre_mostrar }}</h3>
+                    <h3 class="title-card-name h6 fw-semibold mb-1">
+                        {{ titulo.nombre_mostrar }}
+                        {% include "partials/promedio_estrellas.html" with titulo=titulo %}
+                    </h3>
                     <p class="title-card-type small text-white-50 mb-1">
                         {{ titulo.tipo_titulo.nombre }}
                         {% if titulo.duracion_formateada %}
@@ -883,5 +925,216 @@
             }
         });
     });
+
+    const titleDetails = document.querySelector('[data-title-details]');
+    if (titleDetails) {
+    const titleDetailsImage = titleDetails.querySelector('[data-title-details-image]');
+    const titleDetailsNameText = titleDetails.querySelector('[data-title-details-name-text]');
+    const titleDetailsAverage = titleDetails.querySelector('[data-title-details-average]');
+        const titleDetailsDescription = titleDetails.querySelector('[data-title-details-description]');
+        const titleDetailsList = titleDetails.querySelector('[data-title-details-list]');
+        const titleDetailsListButton = titleDetails.querySelector('[data-title-details-list-button]');
+        const ratingForm = titleDetails.querySelector('[data-title-rating-form]');
+        const ratingValueInput = ratingForm.querySelector('[data-title-rating-value]');
+        const ratingLabel = ratingForm.querySelector('[data-title-rating-label]');
+        const ratingStatus = ratingForm.querySelector('[data-title-rating-status]');
+        const ratingStars = [...ratingForm.querySelectorAll('[data-title-rating-star]')];
+        let detailsOpener;
+        let selectedRating = 0;
+
+        const renderRating = (rating) => {
+            ratingStars.forEach((star) => {
+                const starValue = Number(star.dataset.titleRatingStar);
+                const icon = star.querySelector('i');
+                icon.className = `bi ${
+                    rating >= starValue
+                        ? 'bi-star-fill'
+                        : rating >= starValue - 0.5
+                            ? 'bi-star-half'
+                            : 'bi-star'
+                }`;
+                star.setAttribute(
+                    'aria-pressed',
+                    String(rating >= starValue - 0.5 && rating > 0),
+                );
+            });
+        };
+
+        const closeDetails = () => {
+            titleDetails.hidden = true;
+            document.body.style.overflow = '';
+            detailsOpener?.focus();
+        };
+
+        document.addEventListener('click', (event) => {
+            const button = event.target.closest('[data-title-details-open]');
+            if (!button) {
+                return;
+            }
+                detailsOpener = button;
+                const { titleId, titleName, titleDescription, titleImage,
+                    titleRating, titleAverage, titleInList, titleToggleUrl, titleRatingUrl } = button.dataset;
+                titleDetailsNameText.textContent = titleName;
+                titleDetailsAverage.replaceChildren();
+                if (titleAverage) {
+                    titleDetailsAverage.classList.remove('d-none');
+                    titleDetailsAverage.setAttribute(
+                        'aria-label',
+                        `Promedio de ${titleAverage} de 5 estrellas`,
+                    );
+                    const separator = document.createElement('span');
+                    separator.textContent = '|';
+                    separator.setAttribute('aria-hidden', 'true');
+                    titleDetailsAverage.append(separator);
+                    for (let star = 1; star <= 5; star += 1) {
+                        const icon = document.createElement('i');
+                        icon.className = `bi ${star <= Number(titleAverage)
+                            ? 'bi-star-fill'
+                            : 'bi-star'}`;
+                        icon.setAttribute('aria-hidden', 'true');
+                        titleDetailsAverage.append(icon);
+                    }
+                } else {
+                    titleDetailsAverage.classList.add('d-none');
+                }
+                titleDetailsDescription.textContent =
+                    titleDescription || 'Disfruta esta historia en RedFlix.';
+                titleDetailsImage.hidden = !titleImage;
+                titleDetailsImage.src = titleImage || '';
+                titleDetailsList.action = titleToggleUrl;
+                titleDetailsList.dataset.titleId = titleId;
+                titleDetailsList.dataset.titleName = titleName;
+                titleDetailsListButton.querySelector('i').className =
+                    `bi ${titleInList === 'true' ? 'bi-check-lg' : 'bi-plus-lg'}`;
+                titleDetailsListButton.setAttribute(
+                    'aria-label',
+                    `${titleInList === 'true' ? 'Quitar de' : 'Agregar a'} Mi Lista: ${titleName}`,
+                );
+                titleDetailsListButton.title =
+                    titleInList === 'true' ? 'Quitar de Mi Lista' : 'Agregar a Mi Lista';
+                ratingForm.action = titleRatingUrl;
+                selectedRating = Number(titleRating) || 0;
+                ratingValueInput.value = selectedRating || '';
+                ratingLabel.textContent = selectedRating
+                    ? `Tu puntuación: ${selectedRating} estrellas`
+                    : 'Elige de media a 5 estrellas';
+                ratingStatus.textContent = '';
+                renderRating(selectedRating);
+                titleDetails.hidden = false;
+                document.body.style.overflow = 'hidden';
+                titleDetails.querySelector('[data-title-details-close]').focus();
+        });
+
+        titleDetails.querySelector('[data-title-details-close]')
+            .addEventListener('click', closeDetails);
+        titleDetails.addEventListener('click', (event) => {
+            if (event.target === titleDetails) {
+                closeDetails();
+            }
+        });
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && !titleDetails.hidden) {
+                closeDetails();
+            }
+        });
+
+        ratingStars.forEach((star) => {
+            star.addEventListener('click', async (event) => {
+                const starValue = Number(star.dataset.titleRatingStar);
+                const bounds = star.getBoundingClientRect();
+                const half = event.detail > 0
+                    && event.clientX - bounds.left < bounds.width / 2;
+                const rating = half ? starValue - 0.5 : starValue;
+                selectedRating = rating;
+                ratingValueInput.value = rating;
+                ratingLabel.textContent = `Tu puntuación: ${rating} estrellas`;
+                ratingStatus.textContent = 'Guardando puntuación…';
+                renderRating(rating);
+                ratingStars.forEach((ratingStar) => {
+                    ratingStar.disabled = true;
+                });
+
+                try {
+                    const response = await fetch(ratingForm.action, {
+                        method: 'POST',
+                        body: new FormData(ratingForm),
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'Accept': 'application/json',
+                        },
+                        credentials: 'same-origin',
+                    });
+                    const result = await response.json();
+                    if (!response.ok) {
+                        throw new Error(result.error || 'No se pudo guardar tu puntuación.');
+                    }
+
+                    ratingStatus.textContent = result.mensaje;
+                    if (result.estrellas_promedio) {
+                        titleDetailsAverage.classList.remove('d-none');
+                        titleDetailsAverage.setAttribute(
+                            'aria-label',
+                            `Promedio de ${result.estrellas_promedio} de 5 estrellas`,
+                        );
+                        const separator = document.createElement('span');
+                        separator.textContent = '|';
+                        separator.setAttribute('aria-hidden', 'true');
+                        titleDetailsAverage.replaceChildren(separator);
+                        for (let star = 1; star <= 5; star += 1) {
+                            const icon = document.createElement('i');
+                            icon.className = `bi ${
+                                star <= result.estrellas_promedio
+                                    ? 'bi-star-fill'
+                                    : 'bi-star'
+                            }`;
+                            icon.setAttribute('aria-hidden', 'true');
+                            titleDetailsAverage.append(icon);
+                        }
+                        document.querySelectorAll(
+                            `[data-title-average-rating="${result.titulo_id}"]`,
+                        ).forEach((averageRating) => {
+                            averageRating.replaceChildren();
+                            averageRating.setAttribute(
+                                'aria-label',
+                                `Promedio de ${result.estrellas_promedio} de 5 estrellas`,
+                            );
+                            const averageSeparator = document.createElement('span');
+                            averageSeparator.textContent = '|';
+                            averageSeparator.setAttribute('aria-hidden', 'true');
+                            averageRating.append(averageSeparator);
+                            const accessibleLabel = document.createElement('span');
+                            accessibleLabel.className = 'visually-hidden';
+                            accessibleLabel.textContent =
+                                `Promedio ${result.estrellas_promedio} de 5 estrellas`;
+                            averageRating.append(accessibleLabel);
+                            for (let star = 1; star <= 5; star += 1) {
+                                const icon = document.createElement('i');
+                                icon.className = `bi ${
+                                    star <= result.estrellas_promedio
+                                        ? 'bi-star-fill'
+                                        : 'bi-star'
+                                }`;
+                                icon.setAttribute('aria-hidden', 'true');
+                                averageRating.append(icon);
+                            }
+                        });
+                    }
+                    document.querySelectorAll(
+                        `[data-title-details-open][data-title-id="${result.titulo_id}"]`,
+                    ).forEach((titleButton) => {
+                        titleButton.dataset.titleRating = result.puntuacion;
+                        titleButton.dataset.titleAverage = result.estrellas_promedio || '';
+                    });
+                } catch (error) {
+                    ratingStatus.textContent =
+                        error.message || 'No se pudo guardar tu puntuación.';
+                } finally {
+                    ratingStars.forEach((ratingStar) => {
+                        ratingStar.disabled = false;
+                    });
+                }
+            });
+        });
+    }
 </script>
 {% endblock %}

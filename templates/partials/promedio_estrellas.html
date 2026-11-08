@@ -1,0 +1,12 @@
+{% if titulo.estrellas_promedio_redondeado %}
+<span class="average-rating-inline"
+      data-title-average-rating="{{ titulo.pk }}"
+      aria-label="Promedio de {{ titulo.estrellas_promedio_redondeado }} de 5 estrellas">
+    <span aria-hidden="true">|</span>
+    <span class="visually-hidden">Promedio {{ titulo.estrellas_promedio_redondeado }} de 5 estrellas</span>
+    {% for estrella in "12345" %}
+        <i class="bi {% if forloop.counter <= titulo.estrellas_promedio_redondeado %}bi-star-fill{% else %}bi-star{% endif %}"
+           aria-hidden="true"></i>
+    {% endfor %}
+</span>
+{% endif %}

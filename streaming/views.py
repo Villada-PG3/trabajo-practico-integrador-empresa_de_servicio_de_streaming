@@ -1,3 +1,5 @@
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+
 from django.contrib import messages
 from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.contrib.auth.decorators import login_required
@@ -7,6 +9,7 @@ from django.db.models import (
     Case,
     CharField,
     Count,
+    Avg,
     ExpressionWrapper,
     F,
     FloatField,
@@ -29,6 +32,7 @@ from django.views.decorators.http import require_GET, require_POST
 from .forms import LoginForm, PerfilForm, RegistroForm, ReporteVentasFiltroForm
 from .models import (
     Categoria,
+    Calificacion,
     Contenido,
     IdiomaTitulo,
     Plan,
@@ -102,6 +106,66 @@ def marcar_estado_mi_lista(titulos, titulos_guardados):
     return titulos
 
 
+def asignar_promedio_estrellas(titulos):
+    titulos_por_id = {titulo.pk: titulo for titulo in titulos}
+    for titulo in titulos:
+        titulo.estrellas_promedio = Decimal('2.5')
+        titulo.estrellas_promedio_redondeado = 3
+    if not titulos_por_id:
+        return titulos
+
+    promedios = (
+        PerfilTitulo.objects.filter(
+            titulo_id__in=titulos_por_id,
+            calificacion__estrellas__isnull=False,
+        )
+        .values('titulo_id')
+        .annotate(promedio=Avg('calificacion__estrellas'))
+    )
+    for resultado in promedios:
+        promedio = resultado['promedio']
+        titulo = titulos_por_id[resultado['titulo_id']]
+        titulo.estrellas_promedio = promedio
+        titulo.estrellas_promedio_redondeado = int(
+            promedio.quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+        )
+    return titulos
+
+
+def asignar_calificaciones_iniciales(perfil):
+    calificacion_inicial, _ = Calificacion.objects.get_or_create(
+        estrellas=Decimal('2.5'),
+        defaults={
+            'nombre': '2.5 estrellas',
+            'porcentaje_gusto': 50,
+        },
+    )
+    perfil_titulos = PerfilTitulo.objects.filter(perfil=perfil)
+    perfil_titulos.filter(calificacion__isnull=True).update(
+        calificacion=calificacion_inicial,
+    )
+    titulos_existentes = set(
+        perfil_titulos.values_list('titulo_id', flat=True)
+    )
+    titulos_nuevos = (
+        Titulo.objects.exclude(pk__in=titulos_existentes)
+        .values_list('pk', flat=True)
+        .iterator()
+    )
+    lote = []
+    for titulo_id in titulos_nuevos:
+        lote.append(PerfilTitulo(
+            perfil=perfil,
+            titulo_id=titulo_id,
+            calificacion=calificacion_inicial,
+        ))
+        if len(lote) == 500:
+            PerfilTitulo.objects.bulk_create(lote, batch_size=500)
+            lote = []
+    if lote:
+        PerfilTitulo.objects.bulk_create(lote, batch_size=500)
+
+
 def asignar_textos_titulo(titulos, idioma_id=None):
     for titulo in titulos:
         idiomas_titulo = getattr(titulo, 'idiomas_texto', [])
@@ -168,6 +232,14 @@ def home(request):
     prefijo_tipo = prefijos_tipos.get(filtro_tipo)
     if prefijo_tipo is None:
         filtro_tipo = ''
+    try:
+        filtro_categoria_id = int(request.GET.get('categoria', ''))
+    except (TypeError, ValueError):
+        filtro_categoria_id = None
+    categoria_seleccionada = (
+        Categoria.objects.filter(pk=filtro_categoria_id).first()
+        if filtro_categoria_id is not None else None
+    )
 
     cantidad_populares = LIMITE_TITULOS_CARRUSEL if request.user.is_authenticated else 10
     suscripcion_actual = None
@@ -212,6 +284,10 @@ def home(request):
     if prefijo_tipo:
         titulos_query = titulos_query.filter(
             tipo_titulo__nombre__istartswith=prefijo_tipo
+        )
+    if filtro_categoria_id is not None:
+        titulos_query = titulos_query.filter(
+            titulo_categorias__categoria_id=filtro_categoria_id
         )
     titulos_con_contenido = (
         titulos_query.distinct()
@@ -262,6 +338,10 @@ def home(request):
         mas_reproducidos_query = mas_reproducidos_query.filter(
             tipo_titulo__nombre__istartswith=prefijo_tipo
         )
+    if filtro_categoria_id is not None:
+        mas_reproducidos_query = mas_reproducidos_query.filter(
+            titulo_categorias__categoria_id=filtro_categoria_id
+        )
     mas_reproducidos_query = (
         mas_reproducidos_query
         .annotate(
@@ -304,26 +384,84 @@ def home(request):
         })
 
     if request.user.is_authenticated:
-        tipos = (
-            ('Películas', 'pel'),
-            ('Series', 'ser'),
-        )
-        if prefijo_tipo:
-            tipos = tuple(
-                tipo for tipo in tipos if tipo[1] == prefijo_tipo
+        if perfil_activo is not None and not prefijo_tipo:
+            lista_por_ver = Porver.objects.filter(
+                perfil_titulo__perfil=perfil_activo,
+                fecha_eliminado__isnull=True,
+                perfil_titulo__titulo__edad_minima__lte=perfil_activo.tipo_perfil.edad_max,
             )
-        for etiqueta, prefijo in tipos:
-            titulos = marcar_estado_mi_lista(
-                ordenar_categorias_titulo(list(
-                    titulos_con_contenido.filter(
-                        tipo_titulo__nombre__istartswith=prefijo
-                    )[:LIMITE_TITULOS_CARRUSEL]
-                )),
+            if filtro_categoria_id is not None:
+                lista_por_ver = lista_por_ver.filter(
+                    perfil_titulo__titulo__titulo_categorias__categoria_id=filtro_categoria_id
+                ).order_by(
+                    '-perfil_titulo__titulo__fecha_estreno',
+                    '-fecha_agregado',
+                    '-pk',
+                )
+            else:
+                lista_por_ver = lista_por_ver.order_by('fecha_agregado', 'pk')
+            titulos_mi_lista_ids = list(
+                lista_por_ver.values_list(
+                    'perfil_titulo__titulo_id',
+                    flat=True,
+                )[:LIMITE_TITULOS_CARRUSEL]
+            )
+            titulos_mi_lista = list(
+                Titulo.objects.filter(pk__in=titulos_mi_lista_ids)
+                .select_related('tipo_titulo')
+                .annotate(
+                    temporadas=Count(
+                        'contenidos__seccion',
+                        filter=Q(
+                            tipo_titulo__nombre__istartswith='ser',
+                            contenidos__seccion__gte=1,
+                        ),
+                        distinct=True,
+                    )
+                )
+                .prefetch_related(
+                    'titulo_categorias__categoria',
+                    imagenes_catalogo,
+                    textos_catalogo,
+                    contenidos_catalogo,
+                )
+            )
+            orden_mi_lista = {
+                titulo_id: indice
+                for indice, titulo_id in enumerate(titulos_mi_lista_ids)
+            }
+            titulos_mi_lista.sort(key=lambda titulo: orden_mi_lista[titulo.pk])
+            titulos_mi_lista = marcar_estado_mi_lista(
+                ordenar_categorias_titulo(titulos_mi_lista),
                 titulos_guardados,
             )
-            asignar_textos_titulo(titulos, getattr(request.user, 'idioma_id', None))
-            if titulos:
-                carruseles.append({'etiqueta': etiqueta, 'titulos': titulos})
+            asignar_textos_titulo(
+                titulos_mi_lista,
+                getattr(request.user, 'idioma_id', None),
+            )
+            if titulos_mi_lista:
+                carruseles.append({
+                    'etiqueta': 'Mi Lista',
+                    'titulos': titulos_mi_lista,
+                    'es_mi_lista': True,
+                })
+
+        if prefijo_tipo is None:
+            for etiqueta, prefijo in (('Series', 'ser'), ('Películas', 'pel')):
+                titulos = marcar_estado_mi_lista(
+                    ordenar_categorias_titulo(list(
+                        titulos_con_contenido.filter(
+                            tipo_titulo__nombre__istartswith=prefijo
+                        )[:LIMITE_TITULOS_CARRUSEL]
+                    )),
+                    titulos_guardados,
+                )
+                asignar_textos_titulo(
+                    titulos,
+                    getattr(request.user, 'idioma_id', None),
+                )
+                if titulos:
+                    carruseles.append({'etiqueta': etiqueta, 'titulos': titulos})
 
         categorias = Categoria.objects.filter(
             titulo_categorias__titulo__contenidos__isnull=False
@@ -332,6 +470,9 @@ def home(request):
             categorias = categorias.filter(
                 titulo_categorias__titulo__tipo_titulo__nombre__istartswith=prefijo_tipo
             )
+        if filtro_categoria_id is not None:
+            categorias = categorias.exclude(pk=filtro_categoria_id)
+        titulos_en_categorias = set()
         for categoria in categorias:
             titulos = marcar_estado_mi_lista(
                 ordenar_categorias_titulo(list(
@@ -343,14 +484,33 @@ def home(request):
             )
             asignar_textos_titulo(titulos, getattr(request.user, 'idioma_id', None))
             if titulos:
+                titulos_en_categorias.update(titulo.pk for titulo in titulos)
                 carruseles.append({'etiqueta': categoria.nombre, 'titulos': titulos})
+
+        if prefijo_tipo:
+            titulos_no_mostrados = marcar_estado_mi_lista(
+                ordenar_categorias_titulo(list(
+                    titulos_con_contenido.exclude(
+                        pk__in=titulos_en_categorias
+                    )[:LIMITE_TITULOS_CARRUSEL]
+                )),
+                titulos_guardados,
+            )
+            asignar_textos_titulo(
+                titulos_no_mostrados,
+                getattr(request.user, 'idioma_id', None),
+            )
+            if titulos_no_mostrados:
+                carruseles.append({
+                    'etiqueta': 'Más títulos',
+                    'titulos': titulos_no_mostrados,
+                })
 
     banners = []
     if request.user.is_authenticated:
-        titulos_banner = titulos_con_contenido.filter(
-            fecha_estreno__isnull=False,
-            idioma_titulos__imagen__gt='',
-        )
+        titulos_banner = titulos_con_contenido.filter(fecha_estreno__isnull=False)
+        if filtro_categoria_id is None:
+            titulos_banner = titulos_banner.filter(idioma_titulos__imagen__gt='')
         if prefijo_tipo:
             titulos_banner = titulos_banner.filter(
                 tipo_titulo__nombre__istartswith=prefijo_tipo
@@ -374,12 +534,35 @@ def home(request):
                 'imagen_url': imagen_banner.imagen.url if imagen_banner and imagen_banner.imagen else '',
             })
 
+    titulos_para_promedio = {
+        titulo.pk: titulo
+        for carrusel in carruseles
+        for titulo in carrusel['titulos']
+    }
+    titulos_para_promedio.update(
+        (banner['titulo'].pk, banner['titulo']) for banner in banners
+    )
+    asignar_promedio_estrellas(list(titulos_para_promedio.values()))
+    puntuaciones_perfil = {}
+    if perfil_activo is not None:
+        puntuaciones_perfil = dict(
+            PerfilTitulo.objects.filter(perfil=perfil_activo)
+            .values_list('titulo_id', 'calificacion__estrellas')
+        )
+    for titulo in titulos_para_promedio.values():
+        titulo.puntuacion_estrellas = (
+            puntuaciones_perfil.get(titulo.pk) or Decimal('2.5')
+        )
+
     return render(request, 'home.html', {
         'suscripcion_actual': suscripcion_actual,
         'carruseles': carruseles,
         'banners': banners,
         'filtro_tipo': filtro_tipo,
+        'filtro_categoria_id': filtro_categoria_id,
+        'categoria_seleccionada': categoria_seleccionada,
         'url_actual': request.get_full_path(),
+        'pagina_inicio': True,
     })
 
 
@@ -391,6 +574,22 @@ def pagina_inicial_view(request):
 
 def not_found_view(request, exception=None):
     return render(request, 'NotFound.html', status=404)
+
+
+@login_required
+def categorias_view(request):
+    perfil_activo = get_active_profile(request)
+    if perfil_activo is None:
+        return redirect('perfiles')
+
+    categorias = Categoria.objects.filter(
+        titulo_categorias__titulo__contenidos__isnull=False,
+        titulo_categorias__titulo__edad_minima__lte=perfil_activo.tipo_perfil.edad_max,
+    ).distinct().order_by('nombre', 'pk')
+    return render(request, 'categorias.html', {
+        'categorias': categorias,
+        'pagina_categorias': True,
+    })
 
 
 @login_required
@@ -437,6 +636,18 @@ def buscar_titulos_view(request):
         .distinct()
         .order_by('nombre_busqueda', 'pk')
     )
+    titulos_guardados = set(
+        Porver.objects.filter(
+            perfil_titulo__perfil=perfil_activo,
+            fecha_eliminado__isnull=True,
+        ).values_list('perfil_titulo__titulo_id', flat=True)
+    )
+    resultados_busqueda = list(titulos)
+    asignar_promedio_estrellas(resultados_busqueda)
+    puntuaciones_perfil = dict(
+        PerfilTitulo.objects.filter(perfil=perfil_activo)
+        .values_list('titulo_id', 'calificacion__estrellas')
+    )
 
     return JsonResponse({
         'resultados': [
@@ -447,8 +658,16 @@ def buscar_titulos_view(request):
                 'imagen': default_storage.url(titulo.imagen_busqueda)
                 if titulo.imagen_busqueda else '',
                 'url': f"{reverse('home')}?titulo={titulo.pk}",
+                'toggle_url': reverse('toggle_mi_lista', args=[titulo.pk]),
+                'rating_url': reverse('calificar_titulo', args=[titulo.pk]),
+                'en_mi_lista': titulo.pk in titulos_guardados,
+                'estrellas_promedio': titulo.estrellas_promedio_redondeado,
+                'puntuacion_perfil': str(
+                    puntuaciones_perfil.get(titulo.pk) or Decimal('2.5')
+                ),
+                'descripcion': titulo.descripcion_original or '',
             }
-            for titulo in titulos
+            for titulo in resultados_busqueda
         ],
     })
 
@@ -543,6 +762,68 @@ def toggle_mi_lista_view(request, titulo_id):
 
 
 @login_required
+@require_POST
+def calificar_titulo_view(request, titulo_id):
+    perfil_activo = get_active_profile(request)
+    if perfil_activo is None:
+        return JsonResponse(
+            {'error': 'Selecciona un perfil activo antes de calificar un título.'},
+            status=400,
+        )
+
+    try:
+        puntuacion = Decimal(request.POST.get('puntuacion', ''))
+    except (InvalidOperation, TypeError, ValueError):
+        return JsonResponse({'error': 'Selecciona una puntuación válida.'}, status=400)
+
+    if (
+        not puntuacion.is_finite()
+        or puntuacion < Decimal('0.5')
+        or puntuacion > Decimal('5')
+        or puntuacion * 2 != (puntuacion * 2).to_integral_value()
+    ):
+        return JsonResponse(
+            {'error': 'La puntuación debe estar entre 0,5 y 5 estrellas.'},
+            status=400,
+        )
+
+    titulo = Titulo.objects.filter(
+        pk=titulo_id,
+        edad_minima__lte=perfil_activo.tipo_perfil.edad_max,
+        contenidos__isnull=False,
+    ).first()
+    if titulo is None:
+        return JsonResponse(
+            {'error': 'No se encontró un título disponible para este perfil.'},
+            status=404,
+        )
+
+    with transaction.atomic():
+        perfil_titulo, _ = PerfilTitulo.objects.select_for_update().get_or_create(
+            perfil=perfil_activo,
+            titulo=titulo,
+        )
+        calificacion, _ = Calificacion.objects.get_or_create(
+            estrellas=puntuacion,
+            defaults={
+                'nombre': f'{puntuacion} estrellas',
+                'porcentaje_gusto': float(puntuacion * 20),
+            },
+        )
+        perfil_titulo.calificacion = calificacion
+        perfil_titulo.save(update_fields=['calificacion'])
+        perfil_titulo.refresh_from_db(fields=['calificacion'])
+
+    asignar_promedio_estrellas([titulo])
+    return JsonResponse({
+        'titulo_id': titulo.pk,
+        'puntuacion': str(perfil_titulo.calificacion.estrellas),
+        'estrellas_promedio': titulo.estrellas_promedio_redondeado,
+        'mensaje': 'Se guardó tu puntuación.',
+    })
+
+
+@login_required
 def mi_lista_view(request):
     perfil_id = request.session.get(SESION_PERFIL_ACTIVO)
     perfil_activo = Perfil.objects.filter(
@@ -581,11 +862,16 @@ def mi_lista_view(request):
         .select_related(
             'perfil_titulo__titulo__tipo_titulo',
             'perfil_titulo__perfil',
+            'perfil_titulo__calificacion',
         )
         .prefetch_related(imagenes_titulo, textos_titulo)
         .order_by(*ordenamientos[orden])
     )
     titulos_por_ver_lista = list(titulos_por_ver)
+    asignar_promedio_estrellas([
+        porver.perfil_titulo.titulo
+        for porver in titulos_por_ver_lista
+    ])
     asignar_textos_titulo(
         [
             porver.perfil_titulo.titulo
@@ -691,6 +977,7 @@ def crear_perfil_view(request):
                 messages.error(request, 'Esta cuenta ya tiene el máximo de cinco perfiles.')
                 return redirect('perfiles')
             perfil = form.save(request.user)
+            asignar_calificaciones_iniciales(perfil)
 
         request.session[SESION_PERFIL_ACTIVO] = perfil.pk
         return redirect('home')
@@ -861,6 +1148,58 @@ def reporte_ventas_view(request):
         for indice, (plan_nombre, precios_fechas) in enumerate(planes_dict.items())
     ]
 
+    es_demostracion = False
+    if filtros_validos and not request.GET and not miembros_por_plan and not datasets_precios:
+        hoy = timezone.localdate()
+        meses = []
+        nombres_meses = (
+            'ene', 'feb', 'mar', 'abr', 'may', 'jun',
+            'jul', 'ago', 'sep', 'oct', 'nov', 'dic',
+        )
+        for desplazamiento in range(5, -1, -1):
+            indice_mes = hoy.year * 12 + hoy.month - 1 - desplazamiento
+            anio, mes_cero_indexado = divmod(indice_mes, 12)
+            meses.append(f'{anio}-{mes_cero_indexado + 1:02}')
+        fechas_precio_labels = meses
+        miembros_por_plan = [
+            {'plan_nombre': 'Básico', 'total': 128},
+            {'plan_nombre': 'Estándar', 'total': 86},
+            {'plan_nombre': 'Premium', 'total': 54},
+        ]
+        labels_miembros = [item['plan_nombre'] for item in miembros_por_plan]
+        data_miembros = [item['total'] for item in miembros_por_plan]
+        precios_demostracion = (
+            ('Básico', [3999, 4499, 4499, 4999, 4999, 5499]),
+            ('Estándar', [5999, 6499, 6999, 6999, 7499, 7999]),
+            ('Premium', [7999, 8499, 8999, 9499, 9999, 10999]),
+        )
+        datasets_precios = [
+            {
+                'label': nombre,
+                'data': valores,
+                'borderColor': colores[indice],
+                'backgroundColor': colores[indice],
+                'tension': 0.35,
+                'spanGaps': True,
+            }
+            for indice, (nombre, valores) in enumerate(precios_demostracion)
+        ]
+        es_demostracion = True
+
+    total_miembros = sum(item['total'] for item in miembros_por_plan)
+    precios_actuales = [
+        next(
+            (valor for valor in reversed(dataset['data']) if valor is not None),
+            None,
+        )
+        for dataset in datasets_precios
+    ]
+    precios_actuales = [precio for precio in precios_actuales if precio is not None]
+    precio_promedio = (
+        round(sum(precios_actuales) / len(precios_actuales), 2)
+        if precios_actuales else None
+    )
+
     context = {
         'form': form,
         'fecha_inicio': request.GET.get('fecha_inicio', ''),
@@ -869,5 +1208,10 @@ def reporte_ventas_view(request):
         'data_miembros_json': data_miembros,
         'fechas_precio_labels_json': fechas_precio_labels,
         'datasets_precios_json': datasets_precios,
+        'total_miembros': total_miembros,
+        'cantidad_planes': len(labels_miembros),
+        'precio_promedio': precio_promedio,
+        'es_demostracion': es_demostracion,
+        'pagina_estadisticas': True,
     }
     return render(request, 'reporte_ventas.html', context)

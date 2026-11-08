@@ -79,6 +79,22 @@ class Calidad(models.Model):
 class Calificacion(models.Model):
     nombre = models.CharField(max_length=100)
     porcentaje_gusto = models.FloatField()
+    estrellas = models.DecimalField(
+        max_digits=2,
+        decimal_places=1,
+        blank=True,
+        null=True,
+        validators=[MinValueValidator(0.5), MaxValueValidator(5)],
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['estrellas'],
+                condition=models.Q(estrellas__isnull=False),
+                name='unique_calificacion_estrellas',
+            ),
+        ]
 
     def __str__(self):
         return self.nombre

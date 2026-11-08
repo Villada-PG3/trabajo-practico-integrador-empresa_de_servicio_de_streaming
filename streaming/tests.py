@@ -1,4 +1,5 @@
 from datetime import date
+from decimal import Decimal
 from io import StringIO
 
 from django.core.management import call_command
@@ -8,6 +9,7 @@ from django.utils import timezone
 
 from .models import (
     Categoria,
+    Calificacion,
     Contenido,
     Elenco,
     Imagen,
@@ -216,6 +218,28 @@ class ReporteVentasTests(TestCase):
         self.assertEqual(response.context['labels_miembros_json'], ['Básico'])
         self.assertEqual(response.context['data_miembros_json'], [1])
         self.assertEqual(response.context['datasets_precios_json'][0]['data'], [9.99])
+        self.assertFalse(response.context['es_demostracion'])
+        self.assertEqual(response.context['total_miembros'], 1)
+
+    def test_reporte_vacio_muestra_datos_demo_y_enlace_de_estadisticas(self):
+        usuario = Usuario.objects.create_user(
+            username='estadisticas@example.com',
+            email='estadisticas@example.com',
+            password='UnaClave-larga-2026!',
+        )
+        self.client.force_login(usuario)
+
+        response = self.client.get(reverse('reporte_ventas'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context['es_demostracion'])
+        self.assertEqual(response.context['total_miembros'], 268)
+        self.assertEqual(response.context['cantidad_planes'], 3)
+        self.assertEqual(len(response.context['fechas_precio_labels_json']), 6)
+        self.assertEqual(len(response.context['datasets_precios_json']), 3)
+        self.assertContains(response, 'Datos de demostración')
+        self.assertContains(response, 'Estadísticas')
+        self.assertContains(response, f'href="{reverse("reporte_ventas")}"')
 
     def test_reporte_muestra_error_para_rango_invertido(self):
         response = self.client.get(reverse('reporte_ventas'), {
@@ -226,6 +250,7 @@ class ReporteVentasTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'La fecha inicial no puede ser posterior a la fecha final.')
         self.assertEqual(response.context['data_miembros_json'], [])
+        self.assertFalse(response.context['es_demostracion'])
 
 
 class HomeCarouselesTests(TestCase):
@@ -319,7 +344,6 @@ class HomeCarouselesTests(TestCase):
         )
         self.assertEqual(carruseles['Películas'][0].duracion_formateada, '17 min')
         self.assertContains(response, '|</span> 17 min')
-        self.assertContains(response, 'src="/media/demo/posters/pelicula.svg"')
         self.assertEqual(
             [titulo.pk for titulo in carruseles['Series']],
             [serie.pk],
@@ -328,6 +352,7 @@ class HomeCarouselesTests(TestCase):
             [titulo.pk for titulo in carruseles['Acción']],
             [pelicula.pk],
         )
+        self.assertContains(response, 'src="/media/demo/posters/pelicula.svg"')
         for titulos in carruseles.values():
             self.assertNotIn(sin_contenido.pk, [titulo.pk for titulo in titulos])
             self.assertTrue(all(titulo.contenidos.exists() for titulo in titulos))
@@ -417,6 +442,200 @@ class HomeCarouselesTests(TestCase):
         self.assertEqual(len(carruseles['Películas']), 30)
         self.assertEqual(len(carruseles['Acción']), 30)
 
+    def test_inicio_muestra_los_primeros_treinta_titulos_de_mi_lista_solo_en_inicio(self):
+        usuario = Usuario.objects.create_user(
+            username='mi-lista-home@example.com',
+            email='mi-lista-home@example.com',
+            password='UnaClave-larga-2026!',
+        )
+        perfil = self.autenticar_con_perfil(usuario)
+        titulos = [
+            self.crear_titulo(
+                f'Título guardado {indice:02}',
+                self.pelicula,
+                con_contenido=True,
+            )
+            for indice in range(32)
+        ]
+        for titulo in titulos:
+            perfil_titulo = PerfilTitulo.objects.create(perfil=perfil, titulo=titulo)
+            Porver.objects.create(
+                perfil_titulo=perfil_titulo,
+                fecha_agregado=date(2026, 1, 1),
+            )
+
+        respuesta_inicio = self.client.get(reverse('home'))
+        carruseles_inicio = respuesta_inicio.context['carruseles']
+        mi_lista = carruseles_inicio[0]
+
+        self.assertEqual(mi_lista['etiqueta'], 'Mi Lista')
+        self.assertTrue(mi_lista['es_mi_lista'])
+        self.assertEqual(
+            [titulo.pk for titulo in mi_lista['titulos']],
+            [titulo.pk for titulo in titulos[:30]],
+        )
+        self.assertContains(respuesta_inicio, 'id="carousel-title-1">Mi Lista</h2>')
+        self.assertContains(
+            respuesta_inicio,
+            'Quitar de Mi Lista: Título guardado 00',
+        )
+
+        for tipo in ('series', 'peliculas'):
+            respuesta_filtrada = self.client.get(reverse('home'), {'tipo': tipo})
+            etiquetas = [
+                carrusel['etiqueta']
+                for carrusel in respuesta_filtrada.context['carruseles']
+            ]
+            self.assertNotIn('Mi Lista', etiquetas)
+            self.assertNotIn('Series', etiquetas)
+            self.assertNotIn('Películas', etiquetas)
+
+    def test_inicio_ordena_carruseles_por_reproducciones_lista_tipos_y_categorias(self):
+        usuario = Usuario.objects.create_user(
+            username='orden-carruseles@example.com',
+            email='orden-carruseles@example.com',
+            password='UnaClave-larga-2026!',
+        )
+        perfil = self.autenticar_con_perfil(usuario)
+        zoologia = Categoria.objects.create(nombre='Zoología')
+        aventura = Categoria.objects.create(nombre='Aventura')
+        pelicula_reproducida = self.crear_titulo(
+            'Película reproducida',
+            self.pelicula,
+            con_contenido=True,
+            categoria=zoologia,
+        )
+        serie = self.crear_titulo(
+            'Serie de aventura',
+            self.serie,
+            con_contenido=True,
+            categoria=aventura,
+        )
+        perfil_titulo = PerfilTitulo.objects.create(
+            perfil=perfil,
+            titulo=pelicula_reproducida,
+        )
+        Porver.objects.create(
+            perfil_titulo=perfil_titulo,
+            fecha_agregado=date(2026, 1, 1),
+        )
+        PerfilContenido.objects.create(
+            perfil=perfil,
+            contenido=pelicula_reproducida.contenidos.get(),
+            segundos_vistos=100,
+            ultima_visualizacion=timezone.now(),
+        )
+
+        respuesta = self.client.get(reverse('home'))
+
+        self.assertEqual(
+            [carrusel['etiqueta'] for carrusel in respuesta.context['carruseles']],
+            [
+                'Más reproducidos',
+                'Mi Lista',
+                'Series',
+                'Películas',
+                'Aventura',
+                'Zoología',
+            ],
+        )
+
+    def test_pagina_categorias_muestra_categorias_alfabeticamente_y_filtra_inicio(self):
+        zoologia = Categoria.objects.create(nombre='Zoología')
+        aventura = Categoria.objects.create(nombre='Aventura')
+        pelicula = self.crear_titulo(
+            'Película de aventura',
+            self.pelicula,
+            con_contenido=True,
+            categoria=aventura,
+        )
+        pelicula.fecha_estreno = date(2024, 1, 1)
+        pelicula.save(update_fields=['fecha_estreno'])
+        pelicula_reciente = self.crear_titulo(
+            'Estreno de aventura',
+            self.pelicula,
+            con_contenido=True,
+            categoria=aventura,
+        )
+        pelicula_reciente.fecha_estreno = date(2026, 1, 1)
+        pelicula_reciente.save(update_fields=['fecha_estreno'])
+        titulo_otra_categoria = self.crear_titulo(
+            'Título zoológico',
+            self.serie,
+            con_contenido=True,
+            categoria=zoologia,
+        )
+        titulo_otra_categoria.fecha_estreno = date(2026, 2, 1)
+        titulo_otra_categoria.save(update_fields=['fecha_estreno'])
+        for titulo in (pelicula, pelicula_reciente, titulo_otra_categoria):
+            self.agregar_imagen_titulo(
+                titulo,
+                f'Banner {titulo.nombre_original}',
+                f'demo/banners/{titulo.pk}.svg',
+            )
+        self.crear_titulo(
+            'Serie zoológica sin banner',
+            self.serie,
+            con_contenido=True,
+            categoria=zoologia,
+        )
+        usuario = Usuario.objects.create_user(
+            username='categorias-home@example.com',
+            email='categorias-home@example.com',
+            password='UnaClave-larga-2026!',
+        )
+        perfil = self.autenticar_con_perfil(usuario)
+        titulos_en_lista = (pelicula, pelicula_reciente, titulo_otra_categoria)
+        for titulo in titulos_en_lista:
+            perfil_titulo = PerfilTitulo.objects.create(perfil=perfil, titulo=titulo)
+            Porver.objects.create(
+                perfil_titulo=perfil_titulo,
+                fecha_agregado=date(2026, 1, 2),
+            )
+
+        respuesta_categorias = self.client.get(reverse('categorias'))
+
+        self.assertEqual(respuesta_categorias.status_code, 200)
+        self.assertEqual(
+            list(respuesta_categorias.context['categorias']),
+            [aventura, zoologia],
+        )
+        self.assertContains(respuesta_categorias, 'Descubre tu próxima historia')
+        respuesta_filtrada = self.client.get(
+            reverse('home'),
+            {'categoria': aventura.pk},
+        )
+        self.assertRegex(
+            respuesta_filtrada.content.decode(),
+            rf'<a class="nav-link active"\s+href="{reverse("categorias")}">Categorías</a>',
+        )
+        self.assertRegex(
+            respuesta_filtrada.content.decode(),
+            rf'<a class="nav-link"\s+href="{reverse("home")}">Inicio</a>',
+        )
+        self.assertContains(respuesta_filtrada, 'Catálogo de: Aventura')
+        etiquetas = [
+            carrusel['etiqueta']
+            for carrusel in respuesta_filtrada.context['carruseles']
+        ]
+        self.assertNotIn('Aventura', etiquetas)
+        self.assertEqual(
+            [titulo.pk for titulo in respuesta_filtrada.context['carruseles'][0]['titulos']],
+            [pelicula_reciente.pk, pelicula.pk],
+        )
+        carruseles_filtrados = {
+            carrusel['etiqueta']: carrusel['titulos']
+            for carrusel in respuesta_filtrada.context['carruseles']
+        }
+        self.assertEqual(
+            [titulo.pk for titulo in carruseles_filtrados['Mi Lista']],
+            [pelicula_reciente.pk, pelicula.pk],
+        )
+        self.assertEqual(
+            [banner['titulo'].pk for banner in respuesta_filtrada.context['banners']],
+            [pelicula_reciente.pk, pelicula.pk],
+        )
+
     def test_nav_filtra_inicio_por_tipo_y_inicio_quita_el_filtro(self):
         serie_categoria = Categoria.objects.create(nombre='Misterio')
         pelicula = self.crear_titulo(
@@ -449,9 +668,9 @@ class HomeCarouselesTests(TestCase):
 
         self.assertTrue(titulos_series)
         self.assertTrue(all(titulo.pk == serie.pk for titulo in titulos_series))
-        self.assertIn('Series', etiquetas_series)
         self.assertIn('Misterio', etiquetas_series)
         self.assertNotIn('Películas', etiquetas_series)
+        self.assertNotIn('Series', etiquetas_series)
         self.assertNotIn('Acción', etiquetas_series)
         self.assertContains(respuesta_series, '?tipo=peliculas')
         self.assertEqual(respuesta_series.context['filtro_tipo'], 'series')
@@ -469,9 +688,9 @@ class HomeCarouselesTests(TestCase):
 
         self.assertTrue(titulos_peliculas)
         self.assertTrue(all(titulo.pk == pelicula.pk for titulo in titulos_peliculas))
-        self.assertIn('Películas', etiquetas_peliculas)
         self.assertIn('Acción', etiquetas_peliculas)
         self.assertNotIn('Series', etiquetas_peliculas)
+        self.assertNotIn('Películas', etiquetas_peliculas)
         self.assertNotIn('Misterio', etiquetas_peliculas)
 
         respuesta_inicio = self.client.get(reverse('home'))
@@ -601,6 +820,167 @@ class HomeCarouselesTests(TestCase):
         self.assertEqual(respuesta.json()['titulo_id'], titulo.pk)
         self.assertTrue(respuesta.json()['en_mi_lista'])
 
+    def test_tarjeta_muestra_boton_de_detalles_y_ficha_de_calificacion(self):
+        titulo = self.crear_titulo(
+            'Historia para calificar',
+            self.pelicula,
+            con_contenido=True,
+        )
+        titulo.descripcion_original = 'Una historia para probar la ficha.'
+        titulo.save(update_fields=['descripcion_original'])
+        self.agregar_imagen_titulo(
+            titulo,
+            'Imagen de la historia',
+            'demo/banners/historia.svg',
+        )
+        usuario = Usuario.objects.create_user(
+            username='ficha-titulo@example.com',
+            email='ficha-titulo@example.com',
+            password='UnaClave-larga-2026!',
+        )
+        self.autenticar_con_perfil(usuario)
+
+        respuesta = self.client.get(reverse('home'))
+
+        self.assertContains(respuesta, 'data-title-details-open')
+        self.assertContains(respuesta, 'bi bi-list')
+        self.assertContains(respuesta, 'role="dialog" aria-modal="true"')
+        self.assertContains(respuesta, 'Imagen de la historia')
+        self.assertContains(respuesta, 'Una historia para probar la ficha.')
+        self.assertContains(
+            respuesta,
+            reverse('calificar_titulo', args=[titulo.pk]),
+        )
+        self.assertContains(respuesta, 'data-title-rating-star="5"')
+        self.assertContains(respuesta, 'data-title-rating="2.5"')
+        self.assertContains(respuesta, 'Promedio de 3 de 5 estrellas')
+
+    def test_puntuacion_de_titulo_se_guarda_en_incrementos_de_media_estrella(self):
+        titulo = self.crear_titulo(
+            'Título puntuado',
+            self.pelicula,
+            con_contenido=True,
+        )
+        usuario = Usuario.objects.create_user(
+            username='puntuacion-titulo@example.com',
+            email='puntuacion-titulo@example.com',
+            password='UnaClave-larga-2026!',
+        )
+        perfil = self.autenticar_con_perfil(usuario)
+        url = reverse('calificar_titulo', args=[titulo.pk])
+
+        respuesta = self.client.post(
+            url,
+            {'puntuacion': '3.5'},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+            HTTP_ACCEPT='application/json',
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.json()['puntuacion'], '3.5')
+        perfil_titulo = PerfilTitulo.objects.get(perfil=perfil, titulo=titulo)
+        self.assertEqual(perfil_titulo.calificacion.estrellas, Decimal('3.5'))
+        self.assertEqual(perfil_titulo.calificacion.porcentaje_gusto, 70)
+
+        for puntuacion in ('0', '5.5', '2.3', 'invalida'):
+            with self.subTest(puntuacion=puntuacion):
+                respuesta_invalida = self.client.post(
+                    url,
+                    {'puntuacion': puntuacion},
+                    HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+                    HTTP_ACCEPT='application/json',
+                )
+                self.assertEqual(respuesta_invalida.status_code, 400)
+        perfil_titulo.refresh_from_db()
+        self.assertEqual(perfil_titulo.calificacion.estrellas, Decimal('3.5'))
+        respuesta_inicio = self.client.get(reverse('home'))
+        self.assertContains(respuesta_inicio, 'data-title-rating="3.5"')
+
+        cliente_reiniciado = self.client_class()
+        cliente_reiniciado.force_login(usuario)
+        session = cliente_reiniciado.session
+        session['perfil_activo_id'] = perfil.pk
+        session.save()
+        respuesta_reinicio = cliente_reiniciado.get(reverse('home'))
+        self.assertContains(respuesta_reinicio, 'data-title-rating="3.5"')
+
+    def test_promedio_publico_redondea_estrellas_y_se_muestra_junto_al_nombre(self):
+        redondea_arriba = self.crear_titulo(
+            'Promedio tres y medio',
+            self.pelicula,
+            con_contenido=True,
+        )
+        redondea_abajo = self.crear_titulo(
+            'Promedio tres y cuarto',
+            self.pelicula,
+            con_contenido=True,
+        )
+        usuario = Usuario.objects.create_user(
+            username='promedios-estrellas@example.com',
+            email='promedios-estrellas@example.com',
+            password='UnaClave-larga-2026!',
+        )
+        perfil_uno = self.autenticar_con_perfil(usuario)
+        calificacion_tres = Calificacion.objects.create(
+            nombre='3 estrellas',
+            porcentaje_gusto=60,
+            estrellas=Decimal('3'),
+        )
+        calificacion_tres_y_media = Calificacion.objects.create(
+            nombre='3.5 estrellas',
+            porcentaje_gusto=70,
+            estrellas=Decimal('3.5'),
+        )
+        calificacion_cuatro = Calificacion.objects.create(
+            nombre='4 estrellas',
+            porcentaje_gusto=80,
+            estrellas=Decimal('4'),
+        )
+        for titulo in (redondea_arriba, redondea_abajo):
+            PerfilTitulo.objects.create(
+                perfil=perfil_uno,
+                titulo=titulo,
+                calificacion=calificacion_tres,
+            )
+
+        perfil_dos = Perfil.objects.create(
+            nombre='Segundo perfil',
+            imagen=perfil_uno.imagen,
+            tipo_perfil=perfil_uno.tipo_perfil,
+            usuario=usuario,
+        )
+        PerfilTitulo.objects.create(
+            perfil=perfil_dos,
+            titulo=redondea_arriba,
+            calificacion=calificacion_cuatro,
+        )
+        PerfilTitulo.objects.create(
+            perfil=perfil_dos,
+            titulo=redondea_abajo,
+            calificacion=calificacion_tres_y_media,
+        )
+        session = self.client.session
+        session['perfil_activo_id'] = perfil_dos.pk
+        session.save()
+
+        respuesta = self.client.get(reverse('home'))
+
+        titulos = {
+            titulo.pk: titulo
+            for carrusel in respuesta.context['carruseles']
+            for titulo in carrusel['titulos']
+        }
+        self.assertEqual(
+            titulos[redondea_arriba.pk].estrellas_promedio_redondeado,
+            4,
+        )
+        self.assertEqual(
+            titulos[redondea_abajo.pk].estrellas_promedio_redondeado,
+            3,
+        )
+        self.assertContains(respuesta, 'Promedio de 4 de 5 estrellas')
+        self.assertContains(respuesta, 'Promedio de 3 de 5 estrellas')
+
     def test_boton_mi_lista_rechaza_titulo_fuera_de_la_edad_del_perfil(self):
         titulo = self.crear_titulo(
             'Solo adultos',
@@ -655,7 +1035,12 @@ class HomeCarouselesTests(TestCase):
             password='UnaClave-larga-2026!',
             idioma=ingles,
         )
-        self.autenticar_con_perfil(usuario, edad_max=17)
+        perfil = self.autenticar_con_perfil(usuario, edad_max=17)
+        PerfilTitulo.objects.create(perfil=perfil, titulo=localizado)
+        Porver.objects.create(
+            perfil_titulo=PerfilTitulo.objects.get(perfil=perfil, titulo=localizado),
+            fecha_agregado=date(2026, 1, 1),
+        )
 
         respuesta = self.client.get(reverse('buscar_titulos'), {'q': 'northern'})
 
@@ -676,6 +1061,20 @@ class HomeCarouselesTests(TestCase):
         self.assertEqual(
             next(r['url'] for r in resultados if r['id'] == localizado.pk),
             f'{reverse("home")}?titulo={localizado.pk}',
+        )
+        resultado_guardado = next(r for r in resultados if r['id'] == localizado.pk)
+        resultado_disponible = next(r for r in resultados if r['id'] == sin_traduccion.pk)
+        self.assertTrue(resultado_guardado['en_mi_lista'])
+        self.assertFalse(resultado_disponible['en_mi_lista'])
+        self.assertEqual(resultado_disponible['puntuacion_perfil'], '2.5')
+        self.assertEqual(
+            resultado_disponible['rating_url'],
+            reverse('calificar_titulo', args=[sin_traduccion.pk]),
+        )
+        self.assertIn('descripcion', resultado_disponible)
+        self.assertEqual(
+            resultado_disponible['toggle_url'],
+            reverse('toggle_mi_lista', args=[sin_traduccion.pk]),
         )
         self.assertTrue(sin_traduccion.pk in [resultado['id'] for resultado in resultados])
 
@@ -833,6 +1232,8 @@ class HomeCarouselesTests(TestCase):
 
     def test_series_muestran_temporadas_con_secciones_que_tienen_contenido(self):
         serie = self.crear_titulo('Serie por temporadas', self.serie, con_contenido=True)
+        categoria = Categoria.objects.create(nombre='Misterio')
+        TituloCategoria.objects.create(titulo=serie, categoria=categoria)
         for seccion in (1, 1, 2, 0):
             Contenido.objects.create(
                 nombre=f'Temporada {seccion} - episodio {serie.contenidos.count()}',
@@ -1068,6 +1469,55 @@ class HomeCarouselesTests(TestCase):
             [f'estreno-{anio}.svg' for anio in range(2025, 2020, -1)],
         )
 
+    def test_categoria_terror_muestra_banners_recientes_aunque_no_tengan_imagen(self):
+        terror = Categoria.objects.create(nombre='Terror')
+        drama = Categoria.objects.create(nombre='Drama')
+        anterior = self.crear_titulo(
+            'Terror anterior',
+            self.pelicula,
+            con_contenido=True,
+            categoria=terror,
+        )
+        anterior.fecha_estreno = date(2024, 1, 1)
+        anterior.save(update_fields=['fecha_estreno'])
+        reciente = self.crear_titulo(
+            'Terror reciente',
+            self.serie,
+            con_contenido=True,
+            categoria=terror,
+        )
+        reciente.fecha_estreno = date(2026, 1, 1)
+        reciente.save(update_fields=['fecha_estreno'])
+        fuera_de_categoria = self.crear_titulo(
+            'Drama reciente',
+            self.pelicula,
+            con_contenido=True,
+            categoria=drama,
+        )
+        fuera_de_categoria.fecha_estreno = date(2026, 2, 1)
+        fuera_de_categoria.save(update_fields=['fecha_estreno'])
+        self.agregar_imagen_titulo(
+            fuera_de_categoria,
+            'Banner Drama',
+            'demo/banners/drama.svg',
+        )
+        usuario = Usuario.objects.create_user(
+            username='banners-terror@example.com',
+            email='banners-terror@example.com',
+            password='UnaClave-larga-2026!',
+        )
+        self.autenticar_con_perfil(usuario)
+
+        respuesta = self.client.get(reverse('home'), {'categoria': terror.pk})
+
+        self.assertEqual(
+            [banner['titulo'].pk for banner in respuesta.context['banners']],
+            [reciente.pk, anterior.pk],
+        )
+        self.assertTrue(all(not banner['imagen_url'] for banner in respuesta.context['banners']))
+        self.assertContains(respuesta, 'featured-banner-slide--without-image')
+        self.assertContains(respuesta, 'Terror reciente')
+
     def test_banners_respetan_el_tipo_filtrado_y_muestran_los_cinco_mas_recientes(self):
         for anio in range(2020, 2026):
             for tipo, prefijo in (
@@ -1215,6 +1665,12 @@ class MiListaTests(TestCase):
         lista_actualizada = self.client.get(reverse('mi_lista'))
 
         self.assertContains(respuesta_lista, 'Quitar de Mi Lista: Título para quitar')
+        self.assertContains(respuesta_lista, 'data-title-details-open')
+        self.assertContains(respuesta_lista, 'bi bi-list')
+        self.assertContains(
+            respuesta_lista,
+            f'data-title-rating-url="{reverse("calificar_titulo", args=[titulo.pk])}"',
+        )
         self.assertEqual(respuesta_quitar.status_code, 200)
         self.assertFalse(respuesta_quitar.json()['en_mi_lista'])
         self.assertNotContains(lista_actualizada, 'Título para quitar')
@@ -1339,6 +1795,14 @@ class PerfilesTests(TestCase):
 
     def test_crear_primer_perfil_lo_selecciona_y_lleva_a_inicio(self):
         imagen_avatar = Imagen.objects.get(nombre='Avatar Verde')
+        tipo_titulo = TipoTitulo.objects.create(nombre='Película')
+        pais = Pais.objects.create(nombre='Argentina')
+        titulo = Titulo.objects.create(
+            nombre_original='Título para calificación inicial',
+            tipo_titulo=tipo_titulo,
+            pais=pais,
+            edad_minima=0,
+        )
         respuesta = self.client.post(reverse('crear_perfil'), {
             'nombre': 'Hogar',
             'tipo_perfil': 'infantil',
@@ -1352,6 +1816,8 @@ class PerfilesTests(TestCase):
         self.assertEqual(perfil.tipo_perfil.nombre, 'Infantil')
         self.assertEqual(perfil.tipo_perfil.edad_max, 12)
         self.assertEqual(self.client.session['perfil_activo_id'], perfil.pk)
+        perfil_titulo = PerfilTitulo.objects.get(perfil=perfil, titulo=titulo)
+        self.assertEqual(perfil_titulo.calificacion.estrellas, Decimal('2.5'))
 
     def test_formulario_muestra_solo_avatares_de_la_aplicacion(self):
         respuesta = self.client.get(reverse('crear_perfil'))

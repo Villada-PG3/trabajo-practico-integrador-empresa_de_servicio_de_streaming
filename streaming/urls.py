@@ -4,9 +4,11 @@ from . import views
 urlpatterns = [
     path('', views.pagina_inicial_view, name='pagina_inicial'),
     path('inicio/', views.home, name='home'),
+    path('categorias/', views.categorias_view, name='categorias'),
     path('buscar/', views.buscar_titulos_view, name='buscar_titulos'),
     path('mi-lista/', views.mi_lista_view, name='mi_lista'),
     path('mi-lista/toggle/<int:titulo_id>/', views.toggle_mi_lista_view, name='toggle_mi_lista'),
+    path('titulos/<int:titulo_id>/calificar/', views.calificar_titulo_view, name='calificar_titulo'),
     path('perfiles/', views.perfiles_view, name='perfiles'),
     path('perfiles/crear/', views.crear_perfil_view, name='crear_perfil'),
     path('perfiles/<int:perfil_id>/configurar/', views.configurar_perfil_view, name='configurar_perfil'),
