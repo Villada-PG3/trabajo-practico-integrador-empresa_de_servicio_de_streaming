@@ -14,13 +14,18 @@
         const ratingStars = [...ratingForm.querySelectorAll('[data-title-rating-star]')];
         let opener;
 
-        const renderStars = (container, rating, includeSeparator = false) => {
+        const renderStars = (container, rating, includeSeparator = false, percentage = null) => {
             container.replaceChildren();
             if (includeSeparator) {
                 const separator = document.createElement('span');
                 separator.textContent = '|';
                 separator.setAttribute('aria-hidden', 'true');
                 container.append(separator);
+                const averageValue = document.createElement('span');
+                averageValue.textContent = `${Number(percentage).toFixed(
+                    Number.isInteger(Number(percentage)) ? 0 : 1,
+                )}%`;
+                container.append(averageValue);
             }
             for (let star = 1; star <= 5; star += 1) {
                 const icon = document.createElement('i');
@@ -30,17 +35,45 @@
             }
         };
 
+        const renderRating = (rating) => {
+            ratingStars.forEach((star) => {
+                const value = Number(star.dataset.titleRatingStar);
+                star.querySelector('i').className = `bi ${
+                    rating >= value
+                        ? 'bi-star-fill'
+                        : rating >= value - 0.5
+                            ? 'bi-star-half'
+                            : 'bi-star'
+                }`;
+                star.setAttribute(
+                    'aria-pressed',
+                    String(rating >= value - 0.5 && rating > 0),
+                );
+                star.setAttribute(
+                    'aria-label',
+                    `${value} estrellas${
+                        rating === value
+                            ? ', seleccionada'
+                            : rating === value - 0.5
+                                ? ', media estrella seleccionada'
+                                : ''
+                    }`,
+                );
+            });
+        };
+
         const showDetails = (button) => {
             opener = button;
             const {
                 titleId, titleName, titleDescription, titleImage,
-                titleRating, titleAverage, titleInList, titleToggleUrl, titleRatingUrl,
+                titleRating, titleAverage, titleAveragePercent, titleInList,
+                titleToggleUrl, titleRatingUrl,
             } = button.dataset;
             name.textContent = titleName;
             average.classList.toggle('d-none', !titleAverage);
-            average.setAttribute('aria-label', `Promedio de ${titleAverage} de 5 estrellas`);
+            average.setAttribute('aria-label', `Promedio de ${titleAveragePercent}%`);
             if (titleAverage) {
-                renderStars(average, titleAverage, true);
+                renderStars(average, titleAverage, true, titleAveragePercent);
             } else {
                 average.replaceChildren();
             }
@@ -60,19 +93,10 @@
             ratingForm.action = titleRatingUrl;
             ratingInput.value = titleRating || '';
             ratingLabel.textContent = titleRating
-                ? `Tu puntuación: ${titleRating} estrellas`
+                ? `Tu calificación actual: ${titleRating} estrellas`
                 : 'Elige de media a 5 estrellas';
             ratingStatus.textContent = '';
-            ratingStars.forEach((star) => {
-                const value = Number(star.dataset.titleRatingStar);
-                star.querySelector('i').className = `bi ${
-                    Number(titleRating) >= value
-                        ? 'bi-star-fill'
-                        : Number(titleRating) >= value - 0.5
-                            ? 'bi-star-half'
-                            : 'bi-star'
-                }`;
-            });
+            renderRating(Number(titleRating) || 0);
             titleDetails.hidden = false;
             document.body.style.overflow = 'hidden';
             titleDetails.querySelector('[data-title-details-close]').focus();
@@ -147,12 +171,9 @@
                 ratingInput.value = rating;
                 ratingLabel.textContent = `Tu puntuación: ${rating} estrellas`;
                 ratingStatus.textContent = 'Guardando puntuación…';
+                renderRating(rating);
                 ratingStars.forEach((ratingStar) => {
                     ratingStar.disabled = true;
-                    const value = Number(ratingStar.dataset.titleRatingStar);
-                    ratingStar.querySelector('i').className = `bi ${
-                        rating >= value ? 'bi-star-fill' : rating >= value - 0.5 ? 'bi-star-half' : 'bi-star'
-                    }`;
                 });
 
                 try {
@@ -173,23 +194,34 @@
                     average.classList.remove('d-none');
                     average.setAttribute(
                         'aria-label',
-                        `Promedio de ${result.estrellas_promedio} de 5 estrellas`,
+                        `Promedio de ${result.porcentaje_promedio}%`,
                     );
-                    renderStars(average, result.estrellas_promedio, true);
+                    renderStars(
+                        average,
+                        result.estrellas_promedio,
+                        true,
+                        result.porcentaje_promedio,
+                    );
                     document.querySelectorAll(
                         `[data-title-details-open][data-title-id="${result.titulo_id}"]`,
                     ).forEach((titleButton) => {
                         titleButton.dataset.titleRating = result.puntuacion;
                         titleButton.dataset.titleAverage = result.estrellas_promedio;
+                        titleButton.dataset.titleAveragePercent = result.porcentaje_promedio;
                     });
                     document.querySelectorAll(
                         `[data-title-average-rating="${result.titulo_id}"]`,
                     ).forEach((ratingDisplay) => {
                         ratingDisplay.setAttribute(
                             'aria-label',
-                            `Promedio de ${result.estrellas_promedio} de 5 estrellas`,
+                            `Promedio de ${result.porcentaje_promedio}%`,
                         );
-                        renderStars(ratingDisplay, result.estrellas_promedio, true);
+                        renderStars(
+                            ratingDisplay,
+                            result.estrellas_promedio,
+                            true,
+                            result.porcentaje_promedio,
+                        );
                     });
                 } catch (error) {
                     ratingStatus.textContent =

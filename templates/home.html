@@ -664,6 +664,7 @@
                                 data-title-image="{% if imagen and imagen.imagen %}{{ imagen.imagen.url }}{% endif %}"
                                 data-title-rating="{{ titulo.puntuacion_estrellas|default_if_none:'' }}"
                                 data-title-average="{{ titulo.estrellas_promedio_redondeado|default_if_none:'' }}"
+                                data-title-average-percent="{{ titulo.porcentaje_promedio|default_if_none:'' }}"
                                 data-title-in-list="{{ titulo.en_mi_lista|yesno:'true,false' }}"
                                 data-title-toggle-url="{% url 'toggle_mi_lista' titulo.pk %}"
                                 data-title-rating-url="{% url 'calificar_titulo' titulo.pk %}"
@@ -957,6 +958,16 @@
                     'aria-pressed',
                     String(rating >= starValue - 0.5 && rating > 0),
                 );
+                star.setAttribute(
+                    'aria-label',
+                    `${starValue} estrellas${
+                        rating === starValue
+                            ? ', seleccionada'
+                            : rating === starValue - 0.5
+                                ? ', media estrella seleccionada'
+                                : ''
+                    }`,
+                );
             });
         };
 
@@ -973,19 +984,25 @@
             }
                 detailsOpener = button;
                 const { titleId, titleName, titleDescription, titleImage,
-                    titleRating, titleAverage, titleInList, titleToggleUrl, titleRatingUrl } = button.dataset;
+                    titleRating, titleAverage, titleAveragePercent, titleInList,
+                    titleToggleUrl, titleRatingUrl } = button.dataset;
                 titleDetailsNameText.textContent = titleName;
                 titleDetailsAverage.replaceChildren();
                 if (titleAverage) {
                     titleDetailsAverage.classList.remove('d-none');
                     titleDetailsAverage.setAttribute(
                         'aria-label',
-                        `Promedio de ${titleAverage} de 5 estrellas`,
+                        `Promedio de ${titleAveragePercent}%`,
                     );
                     const separator = document.createElement('span');
                     separator.textContent = '|';
                     separator.setAttribute('aria-hidden', 'true');
                     titleDetailsAverage.append(separator);
+                    const averageValue = document.createElement('span');
+                    averageValue.textContent = `${Number(titleAveragePercent).toFixed(
+                        Number.isInteger(Number(titleAveragePercent)) ? 0 : 1,
+                    )}%`;
+                    titleDetailsAverage.append(averageValue);
                     for (let star = 1; star <= 5; star += 1) {
                         const icon = document.createElement('i');
                         icon.className = `bi ${star <= Number(titleAverage)
@@ -1016,7 +1033,7 @@
                 selectedRating = Number(titleRating) || 0;
                 ratingValueInput.value = selectedRating || '';
                 ratingLabel.textContent = selectedRating
-                    ? `Tu puntuación: ${selectedRating} estrellas`
+                    ? `Tu calificación actual: ${selectedRating} estrellas`
                     : 'Elige de media a 5 estrellas';
                 ratingStatus.textContent = '';
                 renderRating(selectedRating);
@@ -1074,12 +1091,17 @@
                         titleDetailsAverage.classList.remove('d-none');
                         titleDetailsAverage.setAttribute(
                             'aria-label',
-                            `Promedio de ${result.estrellas_promedio} de 5 estrellas`,
+                            `Promedio de ${result.porcentaje_promedio}%`,
                         );
                         const separator = document.createElement('span');
                         separator.textContent = '|';
                         separator.setAttribute('aria-hidden', 'true');
                         titleDetailsAverage.replaceChildren(separator);
+                        const averageValue = document.createElement('span');
+                        averageValue.textContent = `${Number(result.porcentaje_promedio).toFixed(
+                            Number.isInteger(Number(result.porcentaje_promedio)) ? 0 : 1,
+                        )}%`;
+                        titleDetailsAverage.append(averageValue);
                         for (let star = 1; star <= 5; star += 1) {
                             const icon = document.createElement('i');
                             icon.className = `bi ${
@@ -1096,16 +1118,23 @@
                             averageRating.replaceChildren();
                             averageRating.setAttribute(
                                 'aria-label',
-                                `Promedio de ${result.estrellas_promedio} de 5 estrellas`,
+                                `Promedio de ${result.porcentaje_promedio}%`,
                             );
                             const averageSeparator = document.createElement('span');
                             averageSeparator.textContent = '|';
                             averageSeparator.setAttribute('aria-hidden', 'true');
                             averageRating.append(averageSeparator);
+                            const averageValue = document.createElement('span');
+                            averageValue.textContent =
+                                `${Number(result.porcentaje_promedio).toFixed(
+                                    Number.isInteger(Number(result.porcentaje_promedio)) ? 0 : 1,
+                                )}%`;
+                            averageRating.append(averageValue);
                             const accessibleLabel = document.createElement('span');
                             accessibleLabel.className = 'visually-hidden';
                             accessibleLabel.textContent =
-                                `Promedio ${result.estrellas_promedio} de 5 estrellas`;
+                                `Promedio ${result.porcentaje_promedio}%, ` +
+                                `${result.estrellas_promedio} de 5 estrellas`;
                             averageRating.append(accessibleLabel);
                             for (let star = 1; star <= 5; star += 1) {
                                 const icon = document.createElement('i');
@@ -1124,6 +1153,7 @@
                     ).forEach((titleButton) => {
                         titleButton.dataset.titleRating = result.puntuacion;
                         titleButton.dataset.titleAverage = result.estrellas_promedio || '';
+                        titleButton.dataset.titleAveragePercent = result.porcentaje_promedio || '';
                     });
                 } catch (error) {
                     ratingStatus.textContent =

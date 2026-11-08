@@ -27,6 +27,7 @@ from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils import timezone
+from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST
 
 from .forms import LoginForm, PerfilForm, RegistroForm, ReporteVentasFiltroForm
@@ -107,63 +108,37 @@ def marcar_estado_mi_lista(titulos, titulos_guardados):
 
 
 def asignar_promedio_estrellas(titulos):
-    titulos_por_id = {titulo.pk: titulo for titulo in titulos}
+    titulos_por_id = {}
     for titulo in titulos:
-        titulo.estrellas_promedio = Decimal('2.5')
-        titulo.estrellas_promedio_redondeado = 3
+        titulos_por_id.setdefault(titulo.pk, []).append(titulo)
+        titulo.porcentaje_promedio = None
+        titulo.estrellas_promedio = None
+        titulo.estrellas_promedio_redondeado = None
     if not titulos_por_id:
         return titulos
 
     promedios = (
         PerfilTitulo.objects.filter(
             titulo_id__in=titulos_por_id,
-            calificacion__estrellas__isnull=False,
+            calificacion__isnull=False,
         )
         .values('titulo_id')
-        .annotate(promedio=Avg('calificacion__estrellas'))
+        .annotate(promedio=Avg('calificacion__porcentaje_gusto'))
     )
     for resultado in promedios:
-        promedio = resultado['promedio']
-        titulo = titulos_por_id[resultado['titulo_id']]
-        titulo.estrellas_promedio = promedio
-        titulo.estrellas_promedio_redondeado = int(
-            promedio.quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+        porcentaje_promedio = Decimal(str(resultado['promedio']))
+        estrellas_promedio = porcentaje_promedio / Decimal('20')
+        estrellas_promedio_redondeado = int(
+            estrellas_promedio.quantize(
+                Decimal('1'),
+                rounding=ROUND_HALF_UP,
+            )
         )
+        for titulo in titulos_por_id[resultado['titulo_id']]:
+            titulo.porcentaje_promedio = porcentaje_promedio
+            titulo.estrellas_promedio = estrellas_promedio
+            titulo.estrellas_promedio_redondeado = estrellas_promedio_redondeado
     return titulos
-
-
-def asignar_calificaciones_iniciales(perfil):
-    calificacion_inicial, _ = Calificacion.objects.get_or_create(
-        estrellas=Decimal('2.5'),
-        defaults={
-            'nombre': '2.5 estrellas',
-            'porcentaje_gusto': 50,
-        },
-    )
-    perfil_titulos = PerfilTitulo.objects.filter(perfil=perfil)
-    perfil_titulos.filter(calificacion__isnull=True).update(
-        calificacion=calificacion_inicial,
-    )
-    titulos_existentes = set(
-        perfil_titulos.values_list('titulo_id', flat=True)
-    )
-    titulos_nuevos = (
-        Titulo.objects.exclude(pk__in=titulos_existentes)
-        .values_list('pk', flat=True)
-        .iterator()
-    )
-    lote = []
-    for titulo_id in titulos_nuevos:
-        lote.append(PerfilTitulo(
-            perfil=perfil,
-            titulo_id=titulo_id,
-            calificacion=calificacion_inicial,
-        ))
-        if len(lote) == 500:
-            PerfilTitulo.objects.bulk_create(lote, batch_size=500)
-            lote = []
-    if lote:
-        PerfilTitulo.objects.bulk_create(lote, batch_size=500)
 
 
 def asignar_textos_titulo(titulos, idioma_id=None):
@@ -214,6 +189,7 @@ def nombre_titulo_para_busqueda(idioma_id):
     )
 
 
+@never_cache
 def home(request):
     perfil_activo = None
     if request.user.is_authenticated:
@@ -534,25 +510,21 @@ def home(request):
                 'imagen_url': imagen_banner.imagen.url if imagen_banner and imagen_banner.imagen else '',
             })
 
-    titulos_para_promedio = {
-        titulo.pk: titulo
+    titulos_en_pantalla = [
+        titulo
         for carrusel in carruseles
         for titulo in carrusel['titulos']
-    }
-    titulos_para_promedio.update(
-        (banner['titulo'].pk, banner['titulo']) for banner in banners
-    )
-    asignar_promedio_estrellas(list(titulos_para_promedio.values()))
+    ]
+    titulos_en_pantalla.extend(banner['titulo'] for banner in banners)
+    asignar_promedio_estrellas(titulos_en_pantalla)
     puntuaciones_perfil = {}
     if perfil_activo is not None:
         puntuaciones_perfil = dict(
             PerfilTitulo.objects.filter(perfil=perfil_activo)
             .values_list('titulo_id', 'calificacion__estrellas')
         )
-    for titulo in titulos_para_promedio.values():
-        titulo.puntuacion_estrellas = (
-            puntuaciones_perfil.get(titulo.pk) or Decimal('2.5')
-        )
+    for titulo in titulos_en_pantalla:
+        titulo.puntuacion_estrellas = puntuaciones_perfil.get(titulo.pk)
 
     return render(request, 'home.html', {
         'suscripcion_actual': suscripcion_actual,
@@ -594,6 +566,7 @@ def categorias_view(request):
 
 @login_required
 @require_GET
+@never_cache
 def buscar_titulos_view(request):
     consulta = request.GET.get('q', '').strip()
     if len(consulta) < 2:
@@ -662,9 +635,11 @@ def buscar_titulos_view(request):
                 'rating_url': reverse('calificar_titulo', args=[titulo.pk]),
                 'en_mi_lista': titulo.pk in titulos_guardados,
                 'estrellas_promedio': titulo.estrellas_promedio_redondeado,
-                'puntuacion_perfil': str(
-                    puntuaciones_perfil.get(titulo.pk) or Decimal('2.5')
+                'porcentaje_promedio': (
+                    float(titulo.porcentaje_promedio)
+                    if titulo.porcentaje_promedio is not None else None
                 ),
+                'puntuacion_perfil': str(puntuaciones_perfil.get(titulo.pk) or ''),
                 'descripcion': titulo.descripcion_original or '',
             }
             for titulo in resultados_busqueda
@@ -803,11 +778,12 @@ def calificar_titulo_view(request, titulo_id):
             perfil=perfil_activo,
             titulo=titulo,
         )
-        calificacion, _ = Calificacion.objects.get_or_create(
+        porcentaje_gusto = float(puntuacion * 20)
+        calificacion, _ = Calificacion.objects.update_or_create(
             estrellas=puntuacion,
             defaults={
                 'nombre': f'{puntuacion} estrellas',
-                'porcentaje_gusto': float(puntuacion * 20),
+                'porcentaje_gusto': porcentaje_gusto,
             },
         )
         perfil_titulo.calificacion = calificacion
@@ -819,11 +795,13 @@ def calificar_titulo_view(request, titulo_id):
         'titulo_id': titulo.pk,
         'puntuacion': str(perfil_titulo.calificacion.estrellas),
         'estrellas_promedio': titulo.estrellas_promedio_redondeado,
+        'porcentaje_promedio': float(titulo.porcentaje_promedio),
         'mensaje': 'Se guardó tu puntuación.',
     })
 
 
 @login_required
+@never_cache
 def mi_lista_view(request):
     perfil_id = request.session.get(SESION_PERFIL_ACTIVO)
     perfil_activo = Perfil.objects.filter(
@@ -977,7 +955,6 @@ def crear_perfil_view(request):
                 messages.error(request, 'Esta cuenta ya tiene el máximo de cinco perfiles.')
                 return redirect('perfiles')
             perfil = form.save(request.user)
-            asignar_calificaciones_iniciales(perfil)
 
         request.session[SESION_PERFIL_ACTIVO] = perfil.pk
         return redirect('home')

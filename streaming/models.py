@@ -187,6 +187,14 @@ class PerfilTitulo(models.Model):
         Calificacion, on_delete=models.SET_NULL, null=True, blank=True, related_name='perfil_titulos'
     )
 
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['perfil', 'titulo'],
+                name='unique_perfil_titulo',
+            ),
+        ]
+
     def __str__(self):
         return f'{self.perfil} - {self.titulo}'
 

@@ -852,14 +852,19 @@ class HomeCarouselesTests(TestCase):
             reverse('calificar_titulo', args=[titulo.pk]),
         )
         self.assertContains(respuesta, 'data-title-rating-star="5"')
-        self.assertContains(respuesta, 'data-title-rating="2.5"')
-        self.assertContains(respuesta, 'Promedio de 3 de 5 estrellas')
+        self.assertContains(respuesta, 'data-title-rating=""')
+        self.assertNotContains(
+            respuesta,
+            f'data-title-average-rating="{titulo.pk}"',
+        )
+        self.assertNotContains(respuesta, 'Promedio de 3 de 5 estrellas')
 
     def test_puntuacion_de_titulo_se_guarda_en_incrementos_de_media_estrella(self):
         titulo = self.crear_titulo(
             'Título puntuado',
             self.pelicula,
             con_contenido=True,
+            categoria=self.accion,
         )
         usuario = Usuario.objects.create_user(
             username='puntuacion-titulo@example.com',
@@ -868,6 +873,9 @@ class HomeCarouselesTests(TestCase):
         )
         perfil = self.autenticar_con_perfil(usuario)
         url = reverse('calificar_titulo', args=[titulo.pk])
+        self.assertFalse(
+            PerfilTitulo.objects.filter(perfil=perfil, titulo=titulo).exists()
+        )
 
         respuesta = self.client.post(
             url,
@@ -881,6 +889,10 @@ class HomeCarouselesTests(TestCase):
         perfil_titulo = PerfilTitulo.objects.get(perfil=perfil, titulo=titulo)
         self.assertEqual(perfil_titulo.calificacion.estrellas, Decimal('3.5'))
         self.assertEqual(perfil_titulo.calificacion.porcentaje_gusto, 70)
+        self.assertEqual(
+            PerfilTitulo.objects.filter(perfil=perfil, titulo=titulo).count(),
+            1,
+        )
 
         for puntuacion in ('0', '5.5', '2.3', 'invalida'):
             with self.subTest(puntuacion=puntuacion):
@@ -891,10 +903,29 @@ class HomeCarouselesTests(TestCase):
                     HTTP_ACCEPT='application/json',
                 )
                 self.assertEqual(respuesta_invalida.status_code, 400)
+
+        for puntuacion, porcentaje in (('0.5', 10), ('5', 100)):
+            with self.subTest(puntuacion=puntuacion):
+                respuesta_valida = self.client.post(url, {'puntuacion': puntuacion})
+                self.assertEqual(respuesta_valida.status_code, 200)
+                perfil_titulo.refresh_from_db()
+                self.assertEqual(
+                    perfil_titulo.calificacion.porcentaje_gusto,
+                    porcentaje,
+                )
+                self.assertEqual(
+                    PerfilTitulo.objects.filter(perfil=perfil, titulo=titulo).count(),
+                    1,
+                )
+
+        respuesta_45 = self.client.post(url, {'puntuacion': '4.5'})
+        self.assertEqual(respuesta_45.status_code, 200)
         perfil_titulo.refresh_from_db()
-        self.assertEqual(perfil_titulo.calificacion.estrellas, Decimal('3.5'))
+        self.assertEqual(perfil_titulo.calificacion.estrellas, Decimal('4.5'))
         respuesta_inicio = self.client.get(reverse('home'))
-        self.assertContains(respuesta_inicio, 'data-title-rating="3.5"')
+        self.assertContains(respuesta_inicio, 'data-title-rating="4.5"')
+        self.assertContains(respuesta_inicio, 'data-title-average-percent="90.0"')
+        self.assertIn('no-store', respuesta_inicio['Cache-Control'])
 
         cliente_reiniciado = self.client_class()
         cliente_reiniciado.force_login(usuario)
@@ -902,7 +933,19 @@ class HomeCarouselesTests(TestCase):
         session['perfil_activo_id'] = perfil.pk
         session.save()
         respuesta_reinicio = cliente_reiniciado.get(reverse('home'))
-        self.assertContains(respuesta_reinicio, 'data-title-rating="3.5"')
+        self.assertContains(respuesta_reinicio, 'data-title-rating="4.5"')
+        apariciones_titulo = [
+            titulo_mostrado
+            for carrusel in respuesta_reinicio.context['carruseles']
+            for titulo_mostrado in carrusel['titulos']
+            if titulo_mostrado.pk == titulo.pk
+        ]
+        self.assertGreaterEqual(len(apariciones_titulo), 2)
+        self.assertTrue(all(
+            titulo_mostrado.puntuacion_estrellas == Decimal('4.5')
+            and titulo_mostrado.porcentaje_promedio == Decimal('90.0')
+            for titulo_mostrado in apariciones_titulo
+        ))
 
     def test_promedio_publico_redondea_estrellas_y_se_muestra_junto_al_nombre(self):
         redondea_arriba = self.crear_titulo(
@@ -978,8 +1021,12 @@ class HomeCarouselesTests(TestCase):
             titulos[redondea_abajo.pk].estrellas_promedio_redondeado,
             3,
         )
-        self.assertContains(respuesta, 'Promedio de 4 de 5 estrellas')
-        self.assertContains(respuesta, 'Promedio de 3 de 5 estrellas')
+        self.assertEqual(titulos[redondea_arriba.pk].porcentaje_promedio, Decimal('70.0'))
+        self.assertEqual(titulos[redondea_abajo.pk].porcentaje_promedio, Decimal('65.0'))
+        self.assertContains(respuesta, '70%')
+        self.assertContains(respuesta, '65%')
+        self.assertContains(respuesta, 'data-title-rating="4.0"')
+        self.assertContains(respuesta, 'data-title-rating="3.5"')
 
     def test_boton_mi_lista_rechaza_titulo_fuera_de_la_edad_del_perfil(self):
         titulo = self.crear_titulo(
@@ -1066,7 +1113,8 @@ class HomeCarouselesTests(TestCase):
         resultado_disponible = next(r for r in resultados if r['id'] == sin_traduccion.pk)
         self.assertTrue(resultado_guardado['en_mi_lista'])
         self.assertFalse(resultado_disponible['en_mi_lista'])
-        self.assertEqual(resultado_disponible['puntuacion_perfil'], '2.5')
+        self.assertEqual(resultado_disponible['puntuacion_perfil'], '')
+        self.assertIsNone(resultado_disponible['porcentaje_promedio'])
         self.assertEqual(
             resultado_disponible['rating_url'],
             reverse('calificar_titulo', args=[sin_traduccion.pk]),
@@ -1816,8 +1864,9 @@ class PerfilesTests(TestCase):
         self.assertEqual(perfil.tipo_perfil.nombre, 'Infantil')
         self.assertEqual(perfil.tipo_perfil.edad_max, 12)
         self.assertEqual(self.client.session['perfil_activo_id'], perfil.pk)
-        perfil_titulo = PerfilTitulo.objects.get(perfil=perfil, titulo=titulo)
-        self.assertEqual(perfil_titulo.calificacion.estrellas, Decimal('2.5'))
+        self.assertFalse(
+            PerfilTitulo.objects.filter(perfil=perfil, titulo=titulo).exists()
+        )
 
     def test_formulario_muestra_solo_avatares_de_la_aplicacion(self):
         respuesta = self.client.get(reverse('crear_perfil'))

@@ -161,6 +161,13 @@
             transform: scale(1.12);
         }
 
+        .title-rating-star[aria-pressed="true"] {
+            border-radius: 0.35rem;
+            background: rgba(255, 193, 7, 0.16);
+            color: #ffe083;
+            text-shadow: 0 0 0.65rem rgba(255, 193, 7, 0.65);
+        }
+
         .navbar-brand-logo {
             color: #ffffff;
             font-weight: 900;
@@ -646,12 +653,19 @@
                                 rating.className = 'average-rating-inline';
                                 rating.setAttribute(
                                     'aria-label',
-                                    `Promedio de ${resultado.estrellas_promedio} de 5 estrellas`,
+                                    `Promedio de ${resultado.porcentaje_promedio}%`,
                                 );
                                 const separator = document.createElement('span');
                                 separator.textContent = '|';
                                 separator.setAttribute('aria-hidden', 'true');
                                 rating.append(separator);
+                                const averageValue = document.createElement('span');
+                                averageValue.textContent = `${Number(
+                                    resultado.porcentaje_promedio,
+                                ).toFixed(Number.isInteger(Number(
+                                    resultado.porcentaje_promedio,
+                                )) ? 0 : 1)}%`;
+                                rating.append(averageValue);
                                 for (let star = 1; star <= 5; star += 1) {
                                     const icon = document.createElement('i');
                                     icon.className = `bi ${
@@ -677,6 +691,8 @@
                             detailsButton.dataset.titleImage = resultado.imagen;
                             detailsButton.dataset.titleRating = resultado.puntuacion_perfil;
                             detailsButton.dataset.titleAverage = resultado.estrellas_promedio;
+                            detailsButton.dataset.titleAveragePercent =
+                                resultado.porcentaje_promedio;
                             detailsButton.dataset.titleInList = String(resultado.en_mi_lista);
                             detailsButton.dataset.titleToggleUrl = resultado.toggle_url;
                             detailsButton.dataset.titleRatingUrl = resultado.rating_url;
