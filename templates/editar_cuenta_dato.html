@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}Editar dato - RedFlix{% endblock %}
+
+{% block content %}
+<section class="container py-5" style="max-width: 680px;">
+    <a class="small text-white-50 text-decoration-none" href="{% url 'cuenta' %}?seccion=usuario">
+        <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>Volver a Cuenta
+    </a>
+    <div class="card bg-dark border-secondary p-4 mt-3">
+        <h1 class="h3 fw-bold mb-2">Editar dato</h1>
+        <p class="text-white-50 mb-4">{{ nombre_dato }}</p>
+
+        <form method="post">
+            {% csrf_token %}
+            {% if form.non_field_errors %}
+                <div class="alert alert-danger" role="alert">{{ form.non_field_errors }}</div>
+            {% endif %}
+            {% for field in form %}
+                <div class="mb-3">
+                    <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                    {{ field }}
+                    {% for error in field.errors %}
+                        <div class="small text-danger mt-1">{{ error }}</div>
+                    {% endfor %}
+                </div>
+            {% endfor %}
+            {% if nombre_dato == 'Contraseña' %}
+                <div class="alert alert-info" role="status">
+                    Al cambiar la contraseña, se cerrarán todas las sesiones excepto la actual.
+                </div>
+            {% endif %}
+            <div class="d-flex justify-content-end gap-2 mt-4">
+                <a class="btn btn-outline-light" href="{% url 'cuenta' %}?seccion=usuario">Cancelar</a>
+                <button type="submit" class="btn btn-netflix">Confirmar</button>
+            </div>
+        </form>
+    </div>
+</section>
+{% endblock %}

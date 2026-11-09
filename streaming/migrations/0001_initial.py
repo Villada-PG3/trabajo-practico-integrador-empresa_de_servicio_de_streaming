@@ -10,6 +10,23 @@ from django.conf import settings
 from django.db import migrations, models
 
 
+def crear_avatares_perfil(apps, schema_editor):
+    Imagen = apps.get_model('streaming', 'Imagen')
+    db_alias = schema_editor.connection.alias
+    avatares = (
+        ('Azul', 'avatar-azul.svg'),
+        ('Coral', 'avatar-coral.svg'),
+        ('Verde', 'avatar-verde.svg'),
+        ('Violeta', 'avatar-violeta.svg'),
+        ('Dorado', 'avatar-dorado.svg'),
+    )
+    for color, archivo in avatares:
+        Imagen.objects.using(db_alias).get_or_create(
+            nombre=f'Avatar {color}',
+            defaults={'imagen': f'demo/perfiles/{archivo}'},
+        )
+
+
 class Migration(migrations.Migration):
 
     initial = True
@@ -51,6 +68,7 @@ class Migration(migrations.Migration):
                 ('descripcion', models.TextField(blank=True, null=True)),
                 ('seccion', models.IntegerField()),
                 ('orden', models.IntegerField()),
+                ('duracion_segundos', models.PositiveIntegerField(blank=True, null=True)),
             ],
         ),
         migrations.CreateModel(
@@ -77,6 +95,7 @@ class Migration(migrations.Migration):
                 ('imagen', models.FileField(upload_to='')),
             ],
         ),
+        migrations.RunPython(crear_avatares_perfil, migrations.RunPython.noop),
         migrations.CreateModel(
             name='MarcaTarjeta',
             fields=[
@@ -138,6 +157,7 @@ class Migration(migrations.Migration):
             name='IdiomaContenido',
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('imagen', models.FileField(blank=True, upload_to='demo/episodios/')),
                 ('contenido', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='idioma_contenidos', to='streaming.contenido')),
                 ('idioma', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='idioma_contenidos', to='streaming.idioma')),
             ],
@@ -179,8 +199,8 @@ class Migration(migrations.Migration):
                 ('telefono', phonenumber_field.modelfields.PhoneNumberField(blank=True, max_length=128, region=None)),
                 ('groups', models.ManyToManyField(blank=True, help_text='The groups this user belongs to. A user will get all permissions granted to each of their groups.', related_name='user_set', related_query_name='user', to='auth.group', verbose_name='groups')),
                 ('user_permissions', models.ManyToManyField(blank=True, help_text='Specific permissions for this user.', related_name='user_set', related_query_name='user', to='auth.permission', verbose_name='user permissions')),
-                ('idioma', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='streaming.idioma')),
-                ('pais', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='streaming.pais')),
+                ('idioma', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, to='streaming.idioma')),
+                ('pais', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, to='streaming.pais')),
             ],
             options={
                 'verbose_name': 'user',
@@ -196,6 +216,7 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.BigAutoField(primary_key=True, serialize=False)),
                 ('nombre', models.CharField(max_length=100)),
+                ('activo', models.BooleanField(default=True)),
                 ('imagen', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='streaming.imagen')),
                 ('usuario', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to=settings.AUTH_USER_MODEL)),
                 ('tipo_perfil', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='streaming.tipoperfil')),
@@ -328,6 +349,7 @@ class Migration(migrations.Migration):
                 ('descripcion_original', models.TextField(blank=True, null=True)),
                 ('fecha_estreno', models.DateField(blank=True, null=True)),
                 ('fecha_baja', models.DateField(blank=True, null=True)),
+                ('edad_minima', models.PositiveSmallIntegerField(blank=True, null=True)),
                 ('pais', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='titulos', to='streaming.pais')),
                 ('tipo_titulo', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='titulos', to='streaming.tipotitulo')),
             ],
@@ -337,17 +359,13 @@ class Migration(migrations.Migration):
             name='titulo',
             field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='perfil_titulos', to='streaming.titulo'),
         ),
-        migrations.AddField(
-            model_name='imagen',
-            name='titulo',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='streaming.titulo'),
-        ),
         migrations.CreateModel(
             name='IdiomaTitulo',
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('nombre', models.CharField(max_length=255)),
                 ('descripcion', models.TextField(blank=True, null=True)),
+                ('imagen', models.FileField(blank=True, upload_to='demo/banners/')),
                 ('idioma', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='idioma_titulos', to='streaming.idioma')),
                 ('titulo', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='idioma_titulos', to='streaming.titulo')),
             ],
@@ -372,5 +390,5 @@ class Migration(migrations.Migration):
                 ('rol_elenco', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='titulo_rol_elencos', to='streaming.rolelenco')),
                 ('titulo', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='titulo_rol_elencos', to='streaming.titulo')),
             ],
-        ),
+        )
     ]

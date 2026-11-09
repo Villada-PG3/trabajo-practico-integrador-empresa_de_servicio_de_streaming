@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <defs>
+    <linearGradient id="storm" x2="0" y2="1">
+      <stop stop-color="#48516c"/>
+      <stop offset=".55" stop-color="#b87b63"/>
+      <stop offset="1" stop-color="#262c3b"/>
+    </linearGradient>
+    <linearGradient id="beam" x2="0" y2="1">
+      <stop stop-color="#ffe4ae" stop-opacity=".55"/>
+      <stop offset="1" stop-color="#ffe4ae" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="900" fill="url(#storm)"/>
+  <path d="M1030 0h145l290 700H860Z" fill="url(#beam)"/>
+  <circle cx="1120" cy="220" r="90" fill="#ffd6a2" opacity=".75"/>
+  <path d="M0 600 211 450l186 178 257-294 235 310 223-228 212 214 276-177v447H0Z" fill="#55505b"/>
+  <path d="M0 741 262 590l202 169 215-188 244 181 246-152 229 166 202-96v230H0Z" fill="#363744"/>
+  <path d="M0 843q320-87 600 5t516-8q229-59 484 6v54H0Z" fill="#202736"/>
+  <g fill="#f4d8ac" opacity=".5"><path d="M250 670h9v42h-9zm32-20h9v62h-9zm-62 43h8v36h-8z"/></g>
+</svg>

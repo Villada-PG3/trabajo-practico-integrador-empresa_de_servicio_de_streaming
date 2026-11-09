@@ -1,0 +1,352 @@
+<script>
+    const titleDetails = document.querySelector('[data-title-details]');
+    if (titleDetails) {
+        const image = titleDetails.querySelector('[data-title-details-image]');
+        const name = titleDetails.querySelector('[data-title-details-name-text]');
+        const average = titleDetails.querySelector('[data-title-details-average]');
+        const description = titleDetails.querySelector('[data-title-details-description]');
+        const cast = titleDetails.querySelector('[data-title-details-cast]');
+        const castRow = titleDetails.querySelector('[data-title-details-cast-row]');
+        const categories = titleDetails.querySelector('[data-title-details-categories]');
+        const categoriesRow = titleDetails.querySelector(
+            '[data-title-details-categories-row]',
+        );
+        const age = titleDetails.querySelector('[data-title-details-age]');
+        const ageRow = titleDetails.querySelector('[data-title-details-age-row]');
+        const listForm = titleDetails.querySelector('[data-title-details-list]');
+        const listButton = titleDetails.querySelector('[data-title-details-list-button]');
+        const contentsSection = titleDetails.querySelector('[data-title-details-contents]');
+        const contentsFilters = titleDetails.querySelector(
+            '[data-title-details-content-filters]',
+        );
+        const contentsList = titleDetails.querySelector('[data-title-details-content-list]');
+        const ratingForm = titleDetails.querySelector('[data-title-rating-form]');
+        const ratingInput = ratingForm.querySelector('[data-title-rating-value]');
+        const ratingLabel = ratingForm.querySelector('[data-title-rating-label]');
+        const ratingStatus = ratingForm.querySelector('[data-title-rating-status]');
+        const ratingStars = [...ratingForm.querySelectorAll('[data-title-rating-star]')];
+        let opener;
+
+        const renderStars = (container, rating, includeSeparator = false, percentage = null) => {
+            container.replaceChildren();
+            if (includeSeparator) {
+                const separator = document.createElement('span');
+                separator.textContent = '|';
+                separator.setAttribute('aria-hidden', 'true');
+                container.append(separator);
+                const averageValue = document.createElement('span');
+                averageValue.textContent = `${Number(percentage).toFixed(
+                    Number.isInteger(Number(percentage)) ? 0 : 1,
+                )}%`;
+                container.append(averageValue);
+            }
+            for (let star = 1; star <= 5; star += 1) {
+                const icon = document.createElement('i');
+                icon.className = `bi ${star <= Number(rating) ? 'bi-star-fill' : 'bi-star'}`;
+                icon.setAttribute('aria-hidden', 'true');
+                container.append(icon);
+            }
+        };
+
+        const renderRating = (rating) => {
+            ratingStars.forEach((star) => {
+                const value = Number(star.dataset.titleRatingStar);
+                star.querySelector('i').className = `bi ${
+                    rating >= value
+                        ? 'bi-star-fill'
+                        : rating >= value - 0.5
+                            ? 'bi-star-half'
+                            : 'bi-star'
+                }`;
+                star.setAttribute(
+                    'aria-pressed',
+                    String(rating >= value - 0.5 && rating > 0),
+                );
+                star.setAttribute(
+                    'aria-label',
+                    `${value} estrellas${
+                        rating === value
+                            ? ', seleccionada'
+                            : rating === value - 0.5
+                                ? ', media estrella seleccionada'
+                                : ''
+                    }`,
+                );
+            });
+        };
+
+        const renderContents = (contents) => {
+            contentsSection.hidden = !contents.length;
+            contentsFilters.replaceChildren();
+            const seasons = [...new Set(
+                contents.map((content) => Number(content.seccion))
+                    .filter((section) => section >= 1),
+            )].sort((first, second) => first - second);
+            const extras = contents.some((content) => Number(content.seccion) <= 0);
+            const showFilters = seasons.length > 1 || extras;
+            contentsFilters.hidden = !showFilters;
+
+            const renderItems = (section) => {
+                contentsList.replaceChildren();
+                const filteredContents = contents.filter((content) => (
+                    section === 'extras'
+                        ? Number(content.seccion) <= 0
+                        : Number(content.seccion) === section
+                ));
+                filteredContents.forEach((content) => {
+                    const item = document.createElement('article');
+                    item.className = 'title-details-content-item';
+
+                    if (content.imagen) {
+                        const contentImage = document.createElement('img');
+                        contentImage.className = 'title-details-content-image';
+                        contentImage.alt = '';
+                        contentImage.src = content.imagen;
+                        item.append(contentImage);
+                    } else {
+                        const placeholder = document.createElement('span');
+                        placeholder.className = 'title-details-content-image-placeholder';
+                        placeholder.setAttribute('aria-hidden', 'true');
+                        placeholder.textContent = '▶';
+                        item.append(placeholder);
+                    }
+
+                    const copy = document.createElement('div');
+                    copy.className = 'title-details-content-copy';
+                    const heading = document.createElement('h4');
+                    heading.className = 'fw-semibold mb-1';
+                    heading.textContent = content.mostrar_numero_episodio
+                        ? `${content.nombre} - Episodio ${content.orden}`
+                        : content.nombre;
+                    copy.append(heading);
+                    if (content.descripcion) {
+                        const contentDescription = document.createElement('p');
+                        contentDescription.className = 'small text-white-50 mb-0';
+                        contentDescription.textContent = content.descripcion;
+                        copy.append(contentDescription);
+                    }
+                    item.append(copy);
+
+                    if (content.duracion) {
+                        const duration = document.createElement('span');
+                        duration.className = 'title-details-content-duration';
+                        duration.textContent = content.duracion;
+                        item.append(duration);
+                    }
+                    contentsList.append(item);
+                });
+            };
+
+            if (!showFilters) {
+                renderItems(seasons[0] ?? 'extras');
+                return;
+            }
+
+            const options = [
+                ...seasons.map((season) => ({
+                    key: String(season),
+                    label: `Temporada ${season}`,
+                    section: season,
+                })),
+                ...(extras ? [{ key: 'extras', label: 'Extras', section: 'extras' }] : []),
+            ];
+            options.forEach((option, index) => {
+                const filter = document.createElement('button');
+                filter.type = 'button';
+                filter.className = 'title-details-content-filter';
+                filter.setAttribute('role', 'tab');
+                filter.setAttribute('aria-selected', String(index === 0));
+                filter.setAttribute('aria-controls', 'title-details-content-list');
+                filter.textContent = option.label;
+                filter.addEventListener('click', () => {
+                    contentsFilters.querySelectorAll('[role="tab"]').forEach((tab) => {
+                        tab.setAttribute('aria-selected', String(tab === filter));
+                    });
+                    renderItems(option.section);
+                });
+                contentsFilters.append(filter);
+            });
+            renderItems(options[0].section);
+        };
+
+        const showDetails = (button) => {
+            opener = button;
+            const {
+                titleId, titleName, titleDescription, titleCast, titleCategories,
+                titleAge, titleImage,
+                titleRating, titleAverage, titleAveragePercent, titleInList,
+                titleToggleUrl, titleRatingUrl, titleContents,
+            } = button.dataset;
+            renderContents(JSON.parse(titleContents || '[]'));
+            name.textContent = titleName;
+            average.classList.toggle('d-none', !titleAverage);
+            average.setAttribute('aria-label', `Promedio de ${titleAveragePercent}%`);
+            if (titleAverage) {
+                renderStars(average, titleAverage, true, titleAveragePercent);
+            } else {
+                average.replaceChildren();
+            }
+            description.textContent = titleDescription || 'Disfruta esta historia en RedFlix.';
+            cast.textContent = titleCast;
+            castRow.hidden = !titleCast;
+            categories.textContent = titleCategories;
+            categoriesRow.hidden = !titleCategories;
+            age.textContent = titleAge;
+            ageRow.hidden = !titleAge;
+            image.hidden = !titleImage;
+            image.src = titleImage || '';
+            listForm.action = titleToggleUrl;
+            listForm.dataset.titleId = titleId;
+            listForm.dataset.titleName = titleName;
+            listButton.querySelector('i').className =
+                `bi ${titleInList === 'true' ? 'bi-check-lg' : 'bi-plus-lg'}`;
+            listButton.setAttribute(
+                'aria-label',
+                `${titleInList === 'true' ? 'Quitar de' : 'Agregar a'} Mi Lista: ${titleName}`,
+            );
+            listButton.title = titleInList === 'true' ? 'Quitar de Mi Lista' : 'Agregar a Mi Lista';
+            ratingForm.action = titleRatingUrl;
+            ratingInput.value = titleRating || '';
+            ratingLabel.textContent = titleRating
+                ? `Tu calificación actual: ${titleRating} estrellas`
+                : 'Elige de media a 5 estrellas';
+            ratingStatus.textContent = '';
+            renderRating(Number(titleRating) || 0);
+            titleDetails.hidden = false;
+            document.body.style.overflow = 'hidden';
+            titleDetails.querySelector('[data-title-details-close]').focus();
+        };
+
+        const closeDetails = () => {
+            titleDetails.hidden = true;
+            document.body.style.overflow = '';
+            opener?.focus();
+        };
+
+        document.addEventListener('click', (event) => {
+            const button = event.target.closest('[data-title-details-open]');
+            if (button) {
+                showDetails(button);
+            }
+        });
+        titleDetails.querySelector('[data-title-details-close]')
+            .addEventListener('click', closeDetails);
+        titleDetails.addEventListener('click', (event) => {
+            if (event.target === titleDetails) {
+                closeDetails();
+            }
+        });
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && !titleDetails.hidden) {
+                closeDetails();
+            }
+        });
+
+        listForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            listButton.disabled = true;
+            try {
+                const response = await fetch(listForm.action, {
+                    method: 'POST',
+                    body: new FormData(listForm),
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json',
+                    },
+                    credentials: 'same-origin',
+                });
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.error || 'No se pudo actualizar Mi Lista.');
+                }
+                const action = result.en_mi_lista ? 'Quitar de' : 'Agregar a';
+                listButton.querySelector('i').className =
+                    `bi ${result.en_mi_lista ? 'bi-check-lg' : 'bi-plus-lg'}`;
+                listButton.setAttribute('aria-label', `${action} Mi Lista: ${listForm.dataset.titleName}`);
+                listButton.title = result.en_mi_lista ? 'Quitar de Mi Lista' : 'Agregar a Mi Lista';
+                document.querySelectorAll(
+                    `[data-title-details-open][data-title-id="${result.titulo_id}"]`,
+                ).forEach((titleButton) => {
+                    titleButton.dataset.titleInList = String(result.en_mi_lista);
+                });
+            } catch (error) {
+                listForm.querySelector('[data-list-toggle-error]').textContent =
+                    error.message || 'No se pudo actualizar Mi Lista.';
+            } finally {
+                listButton.disabled = false;
+            }
+        });
+
+        ratingStars.forEach((star) => {
+            star.addEventListener('click', async (event) => {
+                const starValue = Number(star.dataset.titleRatingStar);
+                const bounds = star.getBoundingClientRect();
+                const isHalf = event.detail > 0 && event.clientX - bounds.left < bounds.width / 2;
+                const rating = isHalf ? starValue - 0.5 : starValue;
+                ratingInput.value = rating;
+                ratingLabel.textContent = `Tu puntuación: ${rating} estrellas`;
+                ratingStatus.textContent = 'Guardando puntuación…';
+                renderRating(rating);
+                ratingStars.forEach((ratingStar) => {
+                    ratingStar.disabled = true;
+                });
+
+                try {
+                    const response = await fetch(ratingForm.action, {
+                        method: 'POST',
+                        body: new FormData(ratingForm),
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'Accept': 'application/json',
+                        },
+                        credentials: 'same-origin',
+                    });
+                    const result = await response.json();
+                    if (!response.ok) {
+                        throw new Error(result.error || 'No se pudo guardar tu puntuación.');
+                    }
+                    ratingStatus.textContent = result.mensaje;
+                    average.classList.remove('d-none');
+                    average.setAttribute(
+                        'aria-label',
+                        `Promedio de ${result.porcentaje_promedio}%`,
+                    );
+                    renderStars(
+                        average,
+                        result.estrellas_promedio,
+                        true,
+                        result.porcentaje_promedio,
+                    );
+                    document.querySelectorAll(
+                        `[data-title-details-open][data-title-id="${result.titulo_id}"]`,
+                    ).forEach((titleButton) => {
+                        titleButton.dataset.titleRating = result.puntuacion;
+                        titleButton.dataset.titleAverage = result.estrellas_promedio;
+                        titleButton.dataset.titleAveragePercent = result.porcentaje_promedio;
+                    });
+                    document.querySelectorAll(
+                        `[data-title-average-rating="${result.titulo_id}"]`,
+                    ).forEach((ratingDisplay) => {
+                        ratingDisplay.setAttribute(
+                            'aria-label',
+                            `Promedio de ${result.porcentaje_promedio}%`,
+                        );
+                        renderStars(
+                            ratingDisplay,
+                            result.estrellas_promedio,
+                            true,
+                            result.porcentaje_promedio,
+                        );
+                    });
+                } catch (error) {
+                    ratingStatus.textContent =
+                        error.message || 'No se pudo guardar tu puntuación.';
+                } finally {
+                    ratingStars.forEach((ratingStar) => {
+                        ratingStar.disabled = false;
+                    });
+                }
+            });
+        });
+    }
+</script>

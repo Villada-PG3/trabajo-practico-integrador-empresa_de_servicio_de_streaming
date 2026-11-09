@@ -1,6 +1,553 @@
 {% extends "base.html" %}
+
 {% block title %}Inicio - RedFlix{% endblock %}
+
+{% block extra_css %}
+<style>
+    .featured-banner {
+        position: relative;
+        min-height: 620px;
+        height: min(78vh, 900px);
+        overflow: hidden;
+        isolation: isolate;
+        background: #101010;
+    }
+
+    .featured-banner-slide {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 1.1s ease-in-out;
+    }
+
+    .featured-banner-slide--without-image {
+        background:
+            radial-gradient(ellipse at 75% 35%, rgba(139, 34, 55, 0.62), transparent 48%),
+            linear-gradient(125deg, #30202a, #111827 62%, #101010);
+    }
+
+    .featured-banner-slide.is-active {
+        z-index: 1;
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    .featured-banner-image {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: center 35%;
+        transform: scale(1.025);
+        transition: transform 6s ease;
+    }
+
+    .featured-banner-slide.is-active .featured-banner-image {
+        transform: scale(1);
+    }
+
+    .featured-banner-shade {
+        position: absolute;
+        inset: 0;
+        background:
+            linear-gradient(90deg, rgba(0, 0, 0, 0.94) 0%, rgba(0, 0, 0, 0.68) 37%, rgba(0, 0, 0, 0.08) 100%),
+            linear-gradient(0deg, #141414 0%, transparent 30%, rgba(0, 0, 0, 0.12) 100%);
+    }
+
+    .featured-banner-content {
+        position: absolute;
+        z-index: 2;
+        right: 0;
+        bottom: clamp(5rem, 11vh, 8rem);
+        left: 0;
+        width: min(1500px, 100%);
+        margin: 0 auto;
+        padding: 0 clamp(1.5rem, 6vw, 6rem);
+        text-align: left;
+    }
+
+    .featured-banner-copy {
+        max-width: 700px;
+    }
+
+    .banner-list-toggle {
+        position: absolute;
+        z-index: 3;
+        top: clamp(5rem, 10vh, 8rem);
+        right: clamp(1.5rem, 6vw, 6rem);
+    }
+
+    .list-toggle-button {
+        display: grid;
+        width: 2.75rem;
+        height: 2.75rem;
+        place-items: center;
+        border: 1px solid rgba(255, 255, 255, 0.8);
+        border-radius: 50%;
+        background: rgba(15, 15, 15, 0.8);
+        color: #fff;
+        font-size: 1.25rem;
+        transition: background-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
+    }
+
+    .list-toggle-button:hover,
+    .list-toggle-button:focus-visible {
+        transform: scale(1.08);
+        background: #fff;
+        color: #141414;
+    }
+
+    .title-list-toggle {
+        position: absolute;
+        z-index: 4;
+        top: 0.65rem;
+        right: 0.65rem;
+    }
+
+    .title-list-toggle .list-toggle-button {
+        width: 2.4rem;
+        height: 2.4rem;
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    .title-card:hover .title-list-toggle .list-toggle-button,
+    .title-card:focus-within .title-list-toggle .list-toggle-button {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    @media (hover: none) {
+        .title-list-toggle .list-toggle-button {
+            opacity: 1;
+            pointer-events: auto;
+        }
+    }
+
+    .featured-banner-title {
+        max-width: 680px;
+        font-size: clamp(2.5rem, 6vw, 5.5rem);
+        font-weight: 800;
+        line-height: 1.02;
+        text-wrap: balance;
+        text-shadow: 0 2px 18px rgba(0, 0, 0, 0.55);
+    }
+
+    .featured-banner-description {
+        display: -webkit-box;
+        overflow: hidden;
+        max-width: 620px;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 4;
+    }
+
+    .featured-banner-controls {
+        position: absolute;
+        z-index: 3;
+        right: clamp(1.5rem, 5vw, 5rem);
+        bottom: 2rem;
+        display: flex;
+        align-items: center;
+        gap: 0.65rem;
+    }
+
+    .featured-banner-button,
+    .featured-banner-indicator {
+        display: grid;
+        place-items: center;
+        border: 1px solid rgba(255, 255, 255, 0.6);
+        background: rgba(0, 0, 0, 0.4);
+        color: #fff;
+    }
+
+    .featured-banner-button {
+        width: 2.75rem;
+        height: 2.75rem;
+        border-radius: 50%;
+    }
+
+    .featured-banner-button:hover,
+    .featured-banner-indicator.is-active {
+        border-color: #fff;
+        background: #fff;
+        color: #141414;
+    }
+
+    .featured-banner-indicators {
+        display: flex;
+        gap: 0.4rem;
+        margin: 0 0.35rem;
+    }
+
+    .featured-banner-indicator {
+        width: 0.6rem;
+        height: 0.6rem;
+        border-radius: 50%;
+        padding: 0;
+    }
+
+    .title-catalog {
+        padding: 2rem 0 3rem;
+        background: linear-gradient(180deg, #141414 0%, #090909 100%);
+    }
+
+    .title-carousel {
+        margin: 0 auto 2.5rem;
+        max-width: 1600px;
+    }
+
+    .title-carousel-heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        margin: 0 auto 0.9rem;
+        max-width: 1500px;
+    }
+
+    .title-carousel-track {
+        --title-card-gap: 1rem;
+        --title-card-width: calc(20% - 1rem);
+        display: flex;
+        gap: var(--title-card-gap);
+        overflow-x: auto;
+        overscroll-behavior-inline: contain;
+        padding: 0.35rem max(1.5rem, calc((100vw - 1500px) / 2)) 9rem;
+        scroll-padding-inline: max(1.5rem, calc((100vw - 1500px) / 2));
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+    }
+
+    .title-carousel-track::-webkit-scrollbar {
+        display: none;
+    }
+
+    .title-card {
+        position: relative;
+        flex: 0 0 var(--title-card-width);
+        width: var(--title-card-width);
+        transition:
+            flex-basis 0.8s cubic-bezier(0.22, 1, 0.36, 1),
+            width 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .title-card > .pt-2 {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        width: 100%;
+    }
+
+    .title-card:hover,
+    .title-card:focus-within {
+        z-index: 2;
+        flex-basis: calc(var(--title-card-width) * 1.2);
+        width: calc(var(--title-card-width) * 1.2);
+    }
+
+    .title-poster {
+        position: relative;
+        display: flex;
+        height: clamp(8rem, 11vw, 10.5rem);
+        flex-direction: column;
+        justify-content: space-between;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 0.5rem;
+        padding: 1rem;
+        background: linear-gradient(145deg, #44232f, #171717 70%);
+        box-shadow: 0 0.75rem 1.5rem rgba(0, 0, 0, 0.3);
+        transition: transform 0.8s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.8s ease;
+    }
+
+    .title-poster-image {
+        position: absolute;
+        z-index: 0;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: center center;
+    }
+
+    .title-card:nth-child(5n + 2) .title-poster {
+        background: linear-gradient(145deg, #173b4a, #171717 72%);
+    }
+
+    .title-card:nth-child(5n + 3) .title-poster {
+        background: linear-gradient(145deg, #584025, #171717 72%);
+    }
+
+    .title-card:nth-child(5n + 4) .title-poster {
+        background: linear-gradient(145deg, #35305a, #171717 72%);
+    }
+
+    .title-card:nth-child(5n) .title-poster {
+        background: linear-gradient(145deg, #31503a, #171717 72%);
+    }
+
+    .title-card:hover .title-poster,
+    .title-card:focus-within .title-poster {
+        transform: translateY(-4px) scale(1.02);
+        border-color: rgba(255, 255, 255, 0.45);
+    }
+
+    .title-card:hover .title-details-button,
+    .title-card:focus-within .title-details-button {
+        opacity: 1;
+    }
+
+    .title-poster::after {
+        position: absolute;
+        right: -2rem;
+        bottom: -3rem;
+        width: 10rem;
+        height: 10rem;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 50%;
+        content: "";
+        box-shadow: 0 0 0 1.5rem rgba(255, 255, 255, 0.025),
+                    0 0 0 3rem rgba(255, 255, 255, 0.02);
+    }
+
+    .title-poster-type,
+    .title-poster-mark {
+        position: relative;
+        z-index: 1;
+    }
+
+    .title-poster-mark {
+        align-self: center;
+        color: rgba(255, 255, 255, 0.88);
+        font-size: clamp(3rem, 7vw, 5rem);
+        font-weight: 800;
+        letter-spacing: -0.08em;
+        line-height: 1;
+        text-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.4);
+    }
+
+    .title-poster-rank {
+        position: absolute;
+        z-index: 1;
+        right: 0.75rem;
+        bottom: 0.1rem;
+        color: rgba(255, 255, 255, 0.95);
+        font-size: clamp(4rem, 8vw, 6rem);
+        font-weight: 900;
+        line-height: 1;
+        text-shadow: 0 0.25rem 1rem rgba(0, 0, 0, 0.8);
+    }
+
+    .popular-list {
+        max-width: 1500px;
+        margin: 0 auto;
+        padding: 2rem clamp(1rem, 4vw, 3rem) 4rem;
+    }
+
+    .popular-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr));
+        gap: 2.5rem 1rem;
+    }
+
+    .popular-card {
+        min-width: 0;
+    }
+
+    .popular-poster {
+        position: relative;
+        display: grid;
+        height: 150px;
+        place-items: center;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 0.5rem;
+        background: linear-gradient(145deg, #44232f, #171717 70%);
+    }
+
+    .popular-poster-image {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .popular-poster-mark {
+        color: rgba(255, 255, 255, 0.88);
+        font-size: 4rem;
+        font-weight: 800;
+    }
+
+    .popular-poster-rank {
+        position: absolute;
+        right: 0.5rem;
+        bottom: -0.25rem;
+        color: #fff;
+        font-size: 4rem;
+        font-weight: 900;
+        line-height: 1;
+        text-shadow: 0 0.25rem 1rem rgba(0, 0, 0, 0.9);
+    }
+
+    .title-card-name {
+        display: -webkit-box;
+        overflow: hidden;
+        min-height: 2.8rem;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+    }
+
+    .title-carousel-controls {
+        display: flex;
+        gap: 0.5rem;
+    }
+
+    .title-carousel-control {
+        width: 2.4rem;
+        height: 2.4rem;
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        border-radius: 50%;
+        background: rgba(0, 0, 0, 0.45);
+        color: white;
+    }
+
+    .title-carousel-control:hover {
+        background: #e50914;
+        border-color: #e50914;
+    }
+
+    @media (max-width: 575.98px) {
+        .featured-banner {
+            min-height: 640px;
+            height: 78vh;
+        }
+
+        .featured-banner-shade {
+            background:
+                linear-gradient(0deg, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.5) 55%, rgba(0, 0, 0, 0.12) 100%);
+        }
+
+        .featured-banner-content {
+            bottom: 6rem;
+            padding-inline: 1.25rem;
+        }
+
+        .featured-banner-controls {
+            right: 1.25rem;
+            bottom: 1.25rem;
+        }
+
+        .title-carousel-track {
+            --title-card-width: min(78vw, 340px);
+            --title-card-gap: 0.75rem;
+            padding-inline: 1rem;
+            padding-bottom: 10rem;
+            scroll-padding-inline: 1rem;
+        }
+
+        .title-poster {
+            height: clamp(8rem, 49vw, 12.75rem);
+        }
+
+        .title-card {
+            flex-basis: var(--title-card-width);
+            width: var(--title-card-width);
+        }
+
+        .title-card:hover,
+        .title-card:focus-within {
+            flex-basis: calc(var(--title-card-width) * 1.2);
+            width: calc(var(--title-card-width) * 1.2);
+        }
+    }
+
+    @media (min-width: 576px) and (max-width: 991.98px) {
+        .title-carousel-track {
+            --title-card-width: min(52vw, 280px);
+        }
+
+        .title-poster {
+            height: clamp(8rem, 20vw, 10.5rem);
+        }
+
+        .title-card {
+            flex-basis: var(--title-card-width);
+            width: var(--title-card-width);
+        }
+    }
+
+</style>
+{% endblock %}
+
 {% block content %}
+{% if user.is_authenticated and banners %}
+<section class="featured-banner" data-featured-banner aria-label="Novedades">
+    {% for banner in banners %}
+    <article class="featured-banner-slide{% if not banner.imagen_url %} featured-banner-slide--without-image{% endif %}{% if forloop.first %} is-active{% endif %}"
+             data-featured-slide
+             aria-hidden="{% if forloop.first %}false{% else %}true{% endif %}">
+        {% if banner.imagen_url %}
+            <img class="featured-banner-image" src="{{ banner.imagen_url }}" alt="" {% if not forloop.first %}loading="lazy"{% endif %}>
+        {% endif %}
+        <div class="featured-banner-shade" aria-hidden="true"></div>
+        <div class="featured-banner-content">
+            <div class="featured-banner-copy text-white">
+                <p class="text-uppercase text-danger fw-bold mb-2">
+                    Novedad{% if banner.titulo.fecha_estreno %} · {{ banner.titulo.fecha_estreno|date:"Y" }}{% endif %}
+                </p>
+                <h1 class="featured-banner-title mb-3">
+                    {{ banner.titulo.nombre_mostrar }}
+                    {% include "partials/promedio_estrellas.html" with titulo=banner.titulo %}
+                </h1>
+                <p class="featured-banner-description fs-5 mb-3">
+                    {{ banner.titulo.descripcion_mostrar|default:"Descubre una nueva historia para disfrutar en nuestra plataforma." }}
+                </p>
+                {% if banner.elenco %}
+                    <p class="mb-3"><span class="fw-semibold">Elenco:</span> {{ banner.elenco|join:", " }}</p>
+                {% endif %}
+                <p class="text-white-50 mb-0">{{ banner.titulo.tipo_titulo.nombre }}</p>
+            </div>
+        </div>
+        {% if user.is_authenticated and perfil_activo %}
+        <form method="post" action="{% url 'toggle_mi_lista' banner.titulo.pk %}"
+              class="banner-list-toggle" data-list-toggle data-title-id="{{ banner.titulo.pk }}"
+              data-title-name="{{ banner.titulo.nombre_mostrar }}">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ url_actual }}">
+            <button type="submit" class="list-toggle-button"
+                    aria-label="{% if banner.titulo.en_mi_lista %}Quitar de{% else %}Agregar a{% endif %} Mi Lista: {{ banner.titulo.nombre_mostrar }}"
+                    title="{% if banner.titulo.en_mi_lista %}Quitar de Mi Lista{% else %}Agregar a Mi Lista{% endif %}">
+                <i class="bi {% if banner.titulo.en_mi_lista %}bi-check-lg{% else %}bi-plus-lg{% endif %}" aria-hidden="true"></i>
+            </button>
+        </form>
+        {% endif %}
+    </article>
+    {% endfor %}
+
+    {% if banners|length > 1 %}
+    <div class="featured-banner-controls" aria-label="Controles de novedades">
+        <button class="featured-banner-button" type="button" data-banner-step="-1" aria-label="Novedad anterior">
+            <i class="bi bi-chevron-left" aria-hidden="true"></i>
+        </button>
+        <div class="featured-banner-indicators" aria-label="Elegir novedad">
+            {% for banner in banners %}
+            <button class="featured-banner-indicator{% if forloop.first %} is-active{% endif %}"
+                    type="button" data-banner-index="{{ forloop.counter0 }}"
+                    aria-label="Mostrar novedad {{ forloop.counter }}"
+                    aria-current="{% if forloop.first %}true{% else %}false{% endif %}"></button>
+            {% endfor %}
+        </div>
+        <button class="featured-banner-button" type="button" data-banner-step="1" aria-label="Novedad siguiente">
+            <i class="bi bi-chevron-right" aria-hidden="true"></i>
+        </button>
+    </div>
+    {% endif %}
+</section>
+{% else %}
 <div class="position-relative text-center text-white py-5 d-flex align-items-center justify-content-center" 
      style="min-height: 80vh; background: linear-gradient(rgba(0,0,0,0.75), rgba(0,0,0,0.75)), url('https://picsum.photos/1920/1080') center/cover no-repeat;">
     
@@ -19,10 +566,19 @@
             ¿Quieres ver algo ya? Ingresa tu email para crear una cuenta o reiniciar tu membresía.
         </p>
 
-        <!-- Formulario básico para iniciar registro -->
-        <form action="{% url 'login' %}" method="GET" class="row g-2 justify-content-center">
+        {% if user.is_authenticated and suscripcion_actual %}
+            <p class="text-white mb-4">Tu plan actual: <strong>{{ suscripcion_actual.plan.nombre }}</strong></p>
+        {% elif user.is_authenticated %}
+            <p class="text-white mb-4">Elige un plan para completar tu suscripción.</p>
+            <a href="{% url 'seleccionar_plan' %}" class="btn btn-netflix btn-lg">Elegir plan &gt;</a>
+        {% else %}
+        <form action="{% url 'registro' %}" method="GET" class="row g-2 justify-content-center">
             <div class="col-12 col-md-8">
-                <input type="email" name="email" class="form-control form-control-lg bg-dark text-white border-secondary" placeholder="Dirección de email" required>
+                <input type="email" 
+                       name="email" 
+                       class="form-control form-control-lg bg-dark text-white border-secondary" 
+                       placeholder="Dirección de email" 
+                       required>
             </div>
             <div class="col-12 col-md-4">
                 <button type="submit" class="btn btn-netflix btn-lg w-100">
@@ -30,9 +586,150 @@
                 </button>
             </div>
         </form>
+        {% endif %}
     </div>
 
 </div>
+{% endif %}
+
+{% if carruseles %}
+<section class="title-catalog" aria-label="Catálogo de títulos">
+    {% if categoria_seleccionada %}
+    <div class="title-carousel-heading px-4 mb-4">
+        <h2 class="h3 fw-bold mb-0">Catálogo de: {{ categoria_seleccionada.nombre }}</h2>
+    </div>
+    {% endif %}
+    {% if not user.is_authenticated %}
+        {% with populares=carruseles.0 %}
+        <section class="popular-list" aria-labelledby="popular-list-title">
+            <h2 class="h3 fw-bold mb-4" id="popular-list-title">{{ populares.etiqueta }}</h2>
+            <div class="popular-grid">
+                {% for titulo in populares.titulos %}
+                <article class="popular-card">
+                    <div class="popular-poster">
+                        {% with imagen=titulo.imagenes_catalogo|first %}
+                            {% if imagen and imagen.imagen %}
+                                <img class="popular-poster-image" src="{{ imagen.imagen.url }}" alt="{{ titulo.nombre_mostrar }}" loading="lazy">
+                            {% else %}
+                                <span class="popular-poster-mark" aria-hidden="true">{{ titulo.nombre_mostrar|slice:":1"|upper }}</span>
+                            {% endif %}
+                        {% endwith %}
+                        <span class="popular-poster-rank" aria-label="Puesto {{ forloop.counter }}">{{ forloop.counter }}</span>
+                    </div>
+                    <div class="pt-2">
+                        <h3 class="title-card-name h6 fw-semibold mb-1">
+                            {{ titulo.nombre_mostrar }}
+                            {% include "partials/promedio_estrellas.html" with titulo=titulo %}
+                        </h3>
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+        </section>
+        {% endwith %}
+    {% else %}
+    {% for carrusel in carruseles %}
+    <section class="title-carousel" aria-labelledby="carousel-title-{{ forloop.counter }}">
+        <div class="title-carousel-heading px-4">
+            <h2 class="h3 fw-bold mb-0" id="carousel-title-{{ forloop.counter }}">{{ carrusel.etiqueta }}</h2>
+            <div class="title-carousel-controls" aria-label="Controles del carrusel">
+                <button class="title-carousel-control" type="button"
+                        data-carousel-target="carousel-track-{{ forloop.counter }}" data-carousel-direction="-1"
+                        aria-label="Desplazar {{ carrusel.etiqueta }} hacia la izquierda">
+                    <i class="bi bi-chevron-left" aria-hidden="true"></i>
+                </button>
+                <button class="title-carousel-control" type="button"
+                        data-carousel-target="carousel-track-{{ forloop.counter }}" data-carousel-direction="1"
+                        aria-label="Desplazar {{ carrusel.etiqueta }} hacia la derecha">
+                    <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                </button>
+            </div>
+        </div>
+        <div class="title-carousel-track" id="carousel-track-{{ forloop.counter }}" role="list">
+            {% for titulo in carrusel.titulos %}
+            <article class="title-card" role="listitem">
+                <div class="title-poster">
+                    {% with imagen=titulo.imagenes_catalogo|first %}
+                        {% if imagen and imagen.imagen %}
+                            <img class="title-poster-image" src="{{ imagen.imagen.url }}" alt="{{ titulo.nombre_mostrar }}" loading="lazy">
+                        {% else %}
+                    <span class="title-poster-mark" aria-hidden="true">{{ titulo.nombre_mostrar|slice:":1"|upper }}</span>
+                        {% endif %}
+                        {% if user.is_authenticated and perfil_activo %}
+                        <button class="title-details-button" type="button"
+                                data-title-details-open
+                                data-title-id="{{ titulo.pk }}"
+                                data-title-name="{{ titulo.nombre_mostrar }}"
+                                data-title-description="{{ titulo.descripcion_mostrar }}"
+                                data-title-cast="{{ titulo.elenco_detalle }}"
+                                data-title-categories="{{ titulo.categorias_detalle }}"
+                                data-title-age="{{ titulo.clasificacion_edad }}"
+                                data-title-image="{% if imagen and imagen.imagen %}{{ imagen.imagen.url }}{% endif %}"
+                                data-title-contents="{{ titulo.contenidos_detalle_json }}"
+                                data-title-rating="{{ titulo.puntuacion_estrellas|default_if_none:'' }}"
+                                data-title-average="{{ titulo.estrellas_promedio_redondeado|default_if_none:'' }}"
+                                data-title-average-percent="{{ titulo.porcentaje_promedio|default_if_none:'' }}"
+                                data-title-in-list="{{ titulo.en_mi_lista|yesno:'true,false' }}"
+                                data-title-toggle-url="{% url 'toggle_mi_lista' titulo.pk %}"
+                                data-title-rating-url="{% url 'calificar_titulo' titulo.pk %}"
+                                aria-label="Ver detalles y calificar: {{ titulo.nombre_mostrar }}"
+                                title="Detalles y calificación">
+                            <i class="bi bi-list" aria-hidden="true"></i>
+                        </button>
+                        {% endif %}
+                    {% endwith %}
+                    <span class="small fw-semibold text-white-50">{{ titulo.fecha_estreno|date:"Y" }}</span>
+                    {% if carrusel.mostrar_top %}
+                        <span class="title-poster-rank" aria-label="Puesto {{ forloop.counter }}">{{ forloop.counter }}</span>
+                    {% endif %}
+                    {% if user.is_authenticated and perfil_activo %}
+                    <form method="post" action="{% url 'toggle_mi_lista' titulo.pk %}"
+                          class="title-list-toggle" data-list-toggle data-title-id="{{ titulo.pk }}"
+                          data-title-name="{{ titulo.nombre_mostrar }}">
+                        {% csrf_token %}
+                        <input type="hidden" name="next" value="{{ url_actual }}">
+                        <button type="submit" class="list-toggle-button"
+                                aria-label="{% if titulo.en_mi_lista %}Quitar de{% else %}Agregar a{% endif %} Mi Lista: {{ titulo.nombre_mostrar }}"
+                                title="{% if titulo.en_mi_lista %}Quitar de Mi Lista{% else %}Agregar a Mi Lista{% endif %}">
+                            <i class="bi {% if titulo.en_mi_lista %}bi-check-lg{% else %}bi-plus-lg{% endif %}" aria-hidden="true"></i>
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
+                <div class="pt-2">
+                    <h3 class="title-card-name h6 fw-semibold mb-1">
+                        {{ titulo.nombre_mostrar }}
+                        {% include "partials/promedio_estrellas.html" with titulo=titulo %}
+                    </h3>
+                    <p class="title-card-type small text-white-50 mb-1">
+                        {{ titulo.tipo_titulo.nombre }}
+                        {% if titulo.duracion_formateada %}
+                            <span class="px-1" aria-hidden="true">|</span> {{ titulo.duracion_formateada }}
+                        {% elif titulo.temporadas %}
+                            <span class="px-1" aria-hidden="true">|</span> {{ titulo.temporadas }} temporada{{ titulo.temporadas|pluralize:"s" }}
+                        {% endif %}
+                    </p>
+                    {% if titulo.clasificacion_edad %}
+                        <p class="small text-white-50 mb-1">
+                            Clasificación: <span class="badge rounded-pill text-bg-secondary">{{ titulo.clasificacion_edad }}</span>
+                        </p>
+                    {% endif %}
+                    {% if titulo.categorias_ordenadas %}
+                        <p class="title-card-categories small text-secondary mb-0">
+                            {% for categoria in titulo.categorias_ordenadas %}
+                                {% if not forloop.first %}<span aria-hidden="true"> · </span>{% endif %}{{ categoria.nombre }}
+                            {% endfor %}
+                        </p>
+                    {% endif %}
+                </div>
+            </article>
+            {% endfor %}
+        </div>
+    </section>
+    {% endfor %}
+    {% endif %}
+</section>
+{% endif %}
 
 <!-- Sección informativa simple -->
 <div class="border-top border-secondary border-opacity-25 py-5 bg-black">
@@ -50,4 +747,553 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const featuredBanner = document.querySelector('[data-featured-banner]');
+    if (featuredBanner) {
+        const slides = [...featuredBanner.querySelectorAll('[data-featured-slide]')];
+        const indicators = [...featuredBanner.querySelectorAll('[data-banner-index]')];
+        let currentSlide = 0;
+        let rotationTimer;
+
+        const showSlide = (nextIndex) => {
+            currentSlide = (nextIndex + slides.length) % slides.length;
+            slides.forEach((slide, index) => {
+                const isActive = index === currentSlide;
+                slide.classList.toggle('is-active', isActive);
+                slide.setAttribute('aria-hidden', String(!isActive));
+            });
+            indicators.forEach((indicator, index) => {
+                const isActive = index === currentSlide;
+                indicator.classList.toggle('is-active', isActive);
+                indicator.setAttribute('aria-current', String(isActive));
+            });
+        };
+
+        const startRotation = () => {
+            window.clearInterval(rotationTimer);
+            if (slides.length > 1) {
+                rotationTimer = window.setInterval(() => showSlide(currentSlide + 1), 5000);
+            }
+        };
+
+        featuredBanner.querySelectorAll('[data-banner-step]').forEach((button) => {
+            button.addEventListener('click', () => {
+                showSlide(currentSlide + Number(button.dataset.bannerStep));
+                startRotation();
+            });
+        });
+        indicators.forEach((indicator) => {
+            indicator.addEventListener('click', () => {
+                showSlide(Number(indicator.dataset.bannerIndex));
+                startRotation();
+            });
+        });
+
+        startRotation();
+    }
+
+    const carouselAnimationFrames = new WeakMap();
+
+    const getCarouselMetrics = (track) => {
+        const cards = [...track.querySelectorAll('.title-card')];
+        if (!cards.length) {
+            return { cards, step: 0, visibleCount: 0, maxStart: 0, start: 0 };
+        }
+
+        const styles = getComputedStyle(track);
+        const gap = Number.parseFloat(styles.columnGap) || 0;
+        const step = cards[0].getBoundingClientRect().width + gap;
+        const padding = Number.parseFloat(styles.paddingLeft) + Number.parseFloat(styles.paddingRight);
+        const availableWidth = track.clientWidth - padding;
+        const visibleCount = Math.max(1, Math.floor((availableWidth + gap) / step));
+        const maxStart = Math.max(0, cards.length - visibleCount);
+        const start = Math.min(maxStart, Math.max(0, Math.round(track.scrollLeft / step)));
+
+        return { cards, step, visibleCount, maxStart, start };
+    };
+
+    const animateCarouselTo = (track, targetLeft) => {
+        const previousFrame = carouselAnimationFrames.get(track);
+        if (previousFrame) {
+            cancelAnimationFrame(previousFrame);
+        }
+
+        const startLeft = track.scrollLeft;
+        const distance = targetLeft - startLeft;
+        const duration = 750;
+        const startTime = performance.now();
+
+        const animate = (now) => {
+            const progress = duration ? Math.min((now - startTime) / duration, 1) : 1;
+            const easedProgress = progress < 0.5
+                ? 4 * progress ** 3
+                : 1 - ((-2 * progress + 2) ** 3) / 2;
+            track.scrollLeft = startLeft + distance * easedProgress;
+
+            if (progress < 1) {
+                carouselAnimationFrames.set(track, requestAnimationFrame(animate));
+            } else {
+                carouselAnimationFrames.delete(track);
+            }
+        };
+
+        carouselAnimationFrames.set(track, requestAnimationFrame(animate));
+    };
+
+    const updateCarouselControls = (track) => {
+        const { maxStart, start } = getCarouselMetrics(track);
+        document.querySelectorAll(`[data-carousel-target="${track.id}"]`).forEach((button) => {
+            const direction = Number(button.dataset.carouselDirection);
+            button.disabled = direction < 0 ? start === 0 : start >= maxStart;
+        });
+    };
+
+    document.querySelectorAll('.title-carousel-track').forEach((track) => {
+        const updateControls = () => updateCarouselControls(track);
+        track.addEventListener('scroll', updateControls, { passive: true });
+        window.addEventListener('resize', updateControls);
+        updateControls();
+    });
+
+    document.querySelectorAll('[data-carousel-target]').forEach((button) => {
+        button.addEventListener('click', () => {
+            const track = document.getElementById(button.dataset.carouselTarget);
+            const { cards, step, visibleCount, maxStart, start } = getCarouselMetrics(track);
+            if (!cards.length || !step) {
+                return;
+            }
+
+            const direction = Number(button.dataset.carouselDirection);
+            const targetStart = direction > 0
+                ? Math.min(start + visibleCount, maxStart)
+                : Math.max(start - visibleCount, 0);
+            animateCarouselTo(track, targetStart * step);
+        });
+    });
+
+    document.querySelectorAll('[data-list-toggle]').forEach((form) => {
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const button = form.querySelector('button[type="submit"]');
+            if (!button || button.disabled) {
+                return;
+            }
+
+            const icon = button.querySelector('i');
+            const priorIconClass = icon.className;
+            button.disabled = true;
+            try {
+                const response = await fetch(form.action, {
+                    method: 'POST',
+                    body: new FormData(form),
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json',
+                    },
+                    credentials: 'same-origin',
+                });
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.error || 'No se pudo actualizar Mi Lista.');
+                }
+
+                const titleId = String(result.titulo_id);
+                document.querySelectorAll(`[data-list-toggle][data-title-id="${titleId}"]`).forEach((titleForm) => {
+                    const titleButton = titleForm.querySelector('button[type="submit"]');
+                    const titleIcon = titleButton?.querySelector('i');
+                    if (!titleButton || !titleIcon) {
+                        return;
+                    }
+
+                    const actionText = result.en_mi_lista ? 'Quitar de' : 'Agregar a';
+                    const titleName = titleForm.dataset.titleName;
+                    titleIcon.className = `bi ${result.en_mi_lista ? 'bi-check-lg' : 'bi-plus-lg'}`;
+                    titleButton.setAttribute('aria-label', `${actionText} Mi Lista: ${titleName}`);
+                    titleButton.title = `${actionText} Mi Lista`;
+                });
+            } catch (error) {
+                icon.className = priorIconClass;
+                let feedback = form.querySelector('[data-list-toggle-error]');
+                if (!feedback) {
+                    feedback = document.createElement('span');
+                    feedback.dataset.listToggleError = '';
+                    feedback.className = 'visually-hidden';
+                    feedback.setAttribute('role', 'alert');
+                    form.append(feedback);
+                }
+                feedback.textContent = error.message || 'No se pudo actualizar Mi Lista.';
+            } finally {
+                button.disabled = false;
+            }
+        });
+    });
+
+    const titleDetails = document.querySelector('[data-title-details]');
+    if (titleDetails) {
+    const titleDetailsImage = titleDetails.querySelector('[data-title-details-image]');
+    const titleDetailsNameText = titleDetails.querySelector('[data-title-details-name-text]');
+    const titleDetailsAverage = titleDetails.querySelector('[data-title-details-average]');
+        const titleDetailsDescription = titleDetails.querySelector('[data-title-details-description]');
+        const titleDetailsList = titleDetails.querySelector('[data-title-details-list]');
+        const titleDetailsListButton = titleDetails.querySelector('[data-title-details-list-button]');
+        const titleDetailsContents = titleDetails.querySelector('[data-title-details-contents]');
+        const titleDetailsContentFilters = titleDetails.querySelector(
+            '[data-title-details-content-filters]',
+        );
+        const titleDetailsContentList = titleDetails.querySelector(
+            '[data-title-details-content-list]',
+        );
+        const ratingForm = titleDetails.querySelector('[data-title-rating-form]');
+        const ratingValueInput = ratingForm.querySelector('[data-title-rating-value]');
+        const ratingLabel = ratingForm.querySelector('[data-title-rating-label]');
+        const ratingStatus = ratingForm.querySelector('[data-title-rating-status]');
+        const ratingStars = [...ratingForm.querySelectorAll('[data-title-rating-star]')];
+        let detailsOpener;
+        let selectedRating = 0;
+
+        const renderRating = (rating) => {
+            ratingStars.forEach((star) => {
+                const starValue = Number(star.dataset.titleRatingStar);
+                const icon = star.querySelector('i');
+                icon.className = `bi ${
+                    rating >= starValue
+                        ? 'bi-star-fill'
+                        : rating >= starValue - 0.5
+                            ? 'bi-star-half'
+                            : 'bi-star'
+                }`;
+                star.setAttribute(
+                    'aria-pressed',
+                    String(rating >= starValue - 0.5 && rating > 0),
+                );
+                star.setAttribute(
+                    'aria-label',
+                    `${starValue} estrellas${
+                        rating === starValue
+                            ? ', seleccionada'
+                            : rating === starValue - 0.5
+                                ? ', media estrella seleccionada'
+                                : ''
+                    }`,
+                );
+            });
+        };
+
+        const renderContents = (contents) => {
+            titleDetailsContents.hidden = !contents.length;
+            titleDetailsContentFilters.replaceChildren();
+            const seasons = [...new Set(
+                contents.map((content) => Number(content.seccion))
+                    .filter((section) => section >= 1),
+            )].sort((first, second) => first - second);
+            const extras = contents.some((content) => Number(content.seccion) <= 0);
+            const showFilters = seasons.length > 1 || extras;
+            titleDetailsContentFilters.hidden = !showFilters;
+
+            const renderItems = (section) => {
+                titleDetailsContentList.replaceChildren();
+                const filteredContents = contents.filter((content) => (
+                    section === 'extras'
+                        ? Number(content.seccion) <= 0
+                        : Number(content.seccion) === section
+                ));
+                filteredContents.forEach((content) => {
+                    const item = document.createElement('article');
+                    item.className = 'title-details-content-item';
+
+                    if (content.imagen) {
+                        const image = document.createElement('img');
+                        image.className = 'title-details-content-image';
+                        image.alt = '';
+                        image.src = content.imagen;
+                        item.append(image);
+                    } else {
+                        const placeholder = document.createElement('span');
+                        placeholder.className = 'title-details-content-image-placeholder';
+                        placeholder.setAttribute('aria-hidden', 'true');
+                        placeholder.textContent = '▶';
+                        item.append(placeholder);
+                    }
+
+                    const copy = document.createElement('div');
+                    copy.className = 'title-details-content-copy';
+                    const heading = document.createElement('h4');
+                    heading.className = 'fw-semibold mb-1';
+                    heading.textContent = content.mostrar_numero_episodio
+                        ? `${content.nombre} - Episodio ${content.orden}`
+                        : content.nombre;
+                    copy.append(heading);
+                    if (content.descripcion) {
+                        const description = document.createElement('p');
+                        description.className = 'small text-white-50 mb-0';
+                        description.textContent = content.descripcion;
+                        copy.append(description);
+                    }
+                    item.append(copy);
+
+                    if (content.duracion) {
+                        const duration = document.createElement('span');
+                        duration.className = 'title-details-content-duration';
+                        duration.textContent = content.duracion;
+                        item.append(duration);
+                    }
+                    titleDetailsContentList.append(item);
+                });
+            };
+
+            if (!showFilters) {
+                renderItems(seasons[0] ?? 'extras');
+                return;
+            }
+
+            const options = [
+                ...seasons.map((season) => ({
+                    label: `Temporada ${season}`,
+                    section: season,
+                })),
+                ...(extras ? [{ label: 'Extras', section: 'extras' }] : []),
+            ];
+            options.forEach((option, index) => {
+                const filter = document.createElement('button');
+                filter.type = 'button';
+                filter.className = 'title-details-content-filter';
+                filter.setAttribute('role', 'tab');
+                filter.setAttribute('aria-selected', String(index === 0));
+                filter.setAttribute('aria-controls', 'title-details-content-list');
+                filter.textContent = option.label;
+                filter.addEventListener('click', () => {
+                    titleDetailsContentFilters.querySelectorAll('[role="tab"]')
+                        .forEach((tab) => {
+                            tab.setAttribute('aria-selected', String(tab === filter));
+                        });
+                    renderItems(option.section);
+                });
+                titleDetailsContentFilters.append(filter);
+            });
+            renderItems(options[0].section);
+        };
+
+        const closeDetails = () => {
+            titleDetails.hidden = true;
+            document.body.style.overflow = '';
+            detailsOpener?.focus();
+        };
+
+        document.addEventListener('click', (event) => {
+            const button = event.target.closest('[data-title-details-open]');
+            if (!button) {
+                return;
+            }
+                detailsOpener = button;
+                const { titleId, titleName, titleDescription, titleCast, titleCategories,
+                    titleAge, titleImage,
+                    titleRating, titleAverage, titleAveragePercent, titleInList,
+                    titleToggleUrl, titleRatingUrl, titleContents } = button.dataset;
+                renderContents(JSON.parse(titleContents || '[]'));
+                titleDetailsNameText.textContent = titleName;
+                titleDetailsAverage.replaceChildren();
+                if (titleAverage) {
+                    titleDetailsAverage.classList.remove('d-none');
+                    titleDetailsAverage.setAttribute(
+                        'aria-label',
+                        `Promedio de ${titleAveragePercent}%`,
+                    );
+                    const separator = document.createElement('span');
+                    separator.textContent = '|';
+                    separator.setAttribute('aria-hidden', 'true');
+                    titleDetailsAverage.append(separator);
+                    const averageValue = document.createElement('span');
+                    averageValue.textContent = `${Number(titleAveragePercent).toFixed(
+                        Number.isInteger(Number(titleAveragePercent)) ? 0 : 1,
+                    )}%`;
+                    titleDetailsAverage.append(averageValue);
+                    for (let star = 1; star <= 5; star += 1) {
+                        const icon = document.createElement('i');
+                        icon.className = `bi ${star <= Number(titleAverage)
+                            ? 'bi-star-fill'
+                            : 'bi-star'}`;
+                        icon.setAttribute('aria-hidden', 'true');
+                        titleDetailsAverage.append(icon);
+                    }
+                } else {
+                    titleDetailsAverage.classList.add('d-none');
+                }
+                titleDetailsDescription.textContent =
+                    titleDescription || 'Disfruta esta historia en RedFlix.';
+                const titleDetailsCast = titleDetails.querySelector(
+                    '[data-title-details-cast]',
+                );
+                const titleDetailsCastRow = titleDetails.querySelector(
+                    '[data-title-details-cast-row]',
+                );
+                const titleDetailsCategories = titleDetails.querySelector(
+                    '[data-title-details-categories]',
+                );
+                const titleDetailsCategoriesRow = titleDetails.querySelector(
+                    '[data-title-details-categories-row]',
+                );
+                const titleDetailsAge = titleDetails.querySelector('[data-title-details-age]');
+                const titleDetailsAgeRow = titleDetails.querySelector(
+                    '[data-title-details-age-row]',
+                );
+                titleDetailsCast.textContent = titleCast;
+                titleDetailsCastRow.hidden = !titleCast;
+                titleDetailsCategories.textContent = titleCategories;
+                titleDetailsCategoriesRow.hidden = !titleCategories;
+                titleDetailsAge.textContent = titleAge;
+                titleDetailsAgeRow.hidden = !titleAge;
+                titleDetailsImage.hidden = !titleImage;
+                titleDetailsImage.src = titleImage || '';
+                titleDetailsList.action = titleToggleUrl;
+                titleDetailsList.dataset.titleId = titleId;
+                titleDetailsList.dataset.titleName = titleName;
+                titleDetailsListButton.querySelector('i').className =
+                    `bi ${titleInList === 'true' ? 'bi-check-lg' : 'bi-plus-lg'}`;
+                titleDetailsListButton.setAttribute(
+                    'aria-label',
+                    `${titleInList === 'true' ? 'Quitar de' : 'Agregar a'} Mi Lista: ${titleName}`,
+                );
+                titleDetailsListButton.title =
+                    titleInList === 'true' ? 'Quitar de Mi Lista' : 'Agregar a Mi Lista';
+                ratingForm.action = titleRatingUrl;
+                selectedRating = Number(titleRating) || 0;
+                ratingValueInput.value = selectedRating || '';
+                ratingLabel.textContent = selectedRating
+                    ? `Tu calificación actual: ${selectedRating} estrellas`
+                    : 'Elige de media a 5 estrellas';
+                ratingStatus.textContent = '';
+                renderRating(selectedRating);
+                titleDetails.hidden = false;
+                document.body.style.overflow = 'hidden';
+                titleDetails.querySelector('[data-title-details-close]').focus();
+        });
+
+        titleDetails.querySelector('[data-title-details-close]')
+            .addEventListener('click', closeDetails);
+        titleDetails.addEventListener('click', (event) => {
+            if (event.target === titleDetails) {
+                closeDetails();
+            }
+        });
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && !titleDetails.hidden) {
+                closeDetails();
+            }
+        });
+
+        ratingStars.forEach((star) => {
+            star.addEventListener('click', async (event) => {
+                const starValue = Number(star.dataset.titleRatingStar);
+                const bounds = star.getBoundingClientRect();
+                const half = event.detail > 0
+                    && event.clientX - bounds.left < bounds.width / 2;
+                const rating = half ? starValue - 0.5 : starValue;
+                selectedRating = rating;
+                ratingValueInput.value = rating;
+                ratingLabel.textContent = `Tu puntuación: ${rating} estrellas`;
+                ratingStatus.textContent = 'Guardando puntuación…';
+                renderRating(rating);
+                ratingStars.forEach((ratingStar) => {
+                    ratingStar.disabled = true;
+                });
+
+                try {
+                    const response = await fetch(ratingForm.action, {
+                        method: 'POST',
+                        body: new FormData(ratingForm),
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'Accept': 'application/json',
+                        },
+                        credentials: 'same-origin',
+                    });
+                    const result = await response.json();
+                    if (!response.ok) {
+                        throw new Error(result.error || 'No se pudo guardar tu puntuación.');
+                    }
+
+                    ratingStatus.textContent = result.mensaje;
+                    if (result.estrellas_promedio) {
+                        titleDetailsAverage.classList.remove('d-none');
+                        titleDetailsAverage.setAttribute(
+                            'aria-label',
+                            `Promedio de ${result.porcentaje_promedio}%`,
+                        );
+                        const separator = document.createElement('span');
+                        separator.textContent = '|';
+                        separator.setAttribute('aria-hidden', 'true');
+                        titleDetailsAverage.replaceChildren(separator);
+                        const averageValue = document.createElement('span');
+                        averageValue.textContent = `${Number(result.porcentaje_promedio).toFixed(
+                            Number.isInteger(Number(result.porcentaje_promedio)) ? 0 : 1,
+                        )}%`;
+                        titleDetailsAverage.append(averageValue);
+                        for (let star = 1; star <= 5; star += 1) {
+                            const icon = document.createElement('i');
+                            icon.className = `bi ${
+                                star <= result.estrellas_promedio
+                                    ? 'bi-star-fill'
+                                    : 'bi-star'
+                            }`;
+                            icon.setAttribute('aria-hidden', 'true');
+                            titleDetailsAverage.append(icon);
+                        }
+                        document.querySelectorAll(
+                            `[data-title-average-rating="${result.titulo_id}"]`,
+                        ).forEach((averageRating) => {
+                            averageRating.replaceChildren();
+                            averageRating.setAttribute(
+                                'aria-label',
+                                `Promedio de ${result.porcentaje_promedio}%`,
+                            );
+                            const averageSeparator = document.createElement('span');
+                            averageSeparator.textContent = '|';
+                            averageSeparator.setAttribute('aria-hidden', 'true');
+                            averageRating.append(averageSeparator);
+                            const averageValue = document.createElement('span');
+                            averageValue.textContent =
+                                `${Number(result.porcentaje_promedio).toFixed(
+                                    Number.isInteger(Number(result.porcentaje_promedio)) ? 0 : 1,
+                                )}%`;
+                            averageRating.append(averageValue);
+                            const accessibleLabel = document.createElement('span');
+                            accessibleLabel.className = 'visually-hidden';
+                            accessibleLabel.textContent =
+                                `Promedio ${result.porcentaje_promedio}%, ` +
+                                `${result.estrellas_promedio} de 5 estrellas`;
+                            averageRating.append(accessibleLabel);
+                            for (let star = 1; star <= 5; star += 1) {
+                                const icon = document.createElement('i');
+                                icon.className = `bi ${
+                                    star <= result.estrellas_promedio
+                                        ? 'bi-star-fill'
+                                        : 'bi-star'
+                                }`;
+                                icon.setAttribute('aria-hidden', 'true');
+                                averageRating.append(icon);
+                            }
+                        });
+                    }
+                    document.querySelectorAll(
+                        `[data-title-details-open][data-title-id="${result.titulo_id}"]`,
+                    ).forEach((titleButton) => {
+                        titleButton.dataset.titleRating = result.puntuacion;
+                        titleButton.dataset.titleAverage = result.estrellas_promedio || '';
+                        titleButton.dataset.titleAveragePercent = result.porcentaje_promedio || '';
+                    });
+                } catch (error) {
+                    ratingStatus.textContent =
+                        error.message || 'No se pudo guardar tu puntuación.';
+                } finally {
+                    ratingStars.forEach((ratingStar) => {
+                        ratingStar.disabled = false;
+                    });
+                }
+            });
+        });
+    }
+</script>
 {% endblock %}

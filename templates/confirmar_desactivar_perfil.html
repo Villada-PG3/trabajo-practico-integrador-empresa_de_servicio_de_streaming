@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+
+{% block title %}Borrar perfil | RedFlix{% endblock %}
+
+{% block content %}
+<section class="container py-5 text-center" style="max-width: 640px;">
+    <h1 class="display-6 fw-semibold mb-3">¿Borrar este perfil?</h1>
+    <p class="text-secondary mb-4">
+        <strong class="text-light">{{ perfil.nombre }}</strong> dejará de mostrarse en la selección de perfiles.
+    </p>
+    <form method="post">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-danger px-4">Sí, BORRAR perfil</button>
+        <a href="{% url 'configurar_perfil' perfil.pk %}" class="btn btn-outline-light ms-2">Cancelar</a>
+    </form>
+</section>
+{% endblock %}

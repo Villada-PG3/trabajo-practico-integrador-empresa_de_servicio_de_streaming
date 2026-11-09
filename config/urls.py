@@ -16,6 +16,8 @@ Including another URLconf
 """
 from django import views
 from django.contrib import admin
+from django.conf import settings
+from django.conf.urls.static import static
 from django.urls import include, path
 from streaming import views 
 
@@ -24,3 +26,8 @@ urlpatterns = [
     # Incluye las URLs de tu app (reemplaza 'content' por el nombre exacto de tu app):
     path('', include('streaming.urls')),
 ]
+
+handler404 = 'streaming.views.not_found_view'
+
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

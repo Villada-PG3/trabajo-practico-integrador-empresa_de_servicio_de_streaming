@@ -1,0 +1,78 @@
+<section class="title-details-overlay" data-title-details hidden
+         role="dialog" aria-modal="true" aria-labelledby="title-details-name"
+         aria-describedby="title-details-description" tabindex="-1">
+    <article class="title-details-panel">
+        <button class="title-details-close" type="button" data-title-details-close
+                aria-label="Cerrar detalles">
+            <i class="bi bi-x-lg" aria-hidden="true"></i>
+        </button>
+        <div class="title-details-image-wrap">
+            <img class="title-details-image" data-title-details-image alt="" hidden>
+            <div class="title-details-image-caption">
+                <h2 class="title-details-name"
+                    id="title-details-name">
+                    <span data-title-details-name-text></span>
+                </h2>
+                <span class="average-rating-inline d-none"
+                      data-title-details-average></span>
+            </div>
+        </div>
+        <div class="title-details-content">
+            <div class="title-details-actions">
+                <form method="post" class="m-0" data-list-toggle data-title-details-list>
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                    <button class="list-toggle-button" type="submit"
+                            data-title-details-list-button aria-label="Agregar a Mi Lista">
+                        <i class="bi bi-plus-lg" aria-hidden="true"></i>
+                    </button>
+                    <span class="visually-hidden" data-list-toggle-error role="alert"></span>
+                </form>
+                <form method="post" class="d-flex flex-column align-items-end gap-1"
+                      data-title-rating-form>
+                    {% csrf_token %}
+                    <input type="hidden" name="puntuacion" data-title-rating-value>
+                    <div class="title-rating-stars" role="group" aria-label="Calificar este título">
+                        {% for star in "12345" %}
+                        <button class="title-rating-star" type="button"
+                                data-title-rating-star="{{ forloop.counter }}"
+                                aria-label="{{ forloop.counter }} estrellas">
+                            <i class="bi bi-star" aria-hidden="true"></i>
+                        </button>
+                        {% endfor %}
+                    </div>
+                    <span class="small text-white-50" data-title-rating-label></span>
+                    <span class="small text-white-50" data-title-rating-status role="status"></span>
+                </form>
+            </div>
+            <p class="text-white-50 mb-3" id="title-details-description"
+               data-title-details-description></p>
+            <dl class="title-details-metadata mb-0">
+                <div data-title-details-cast-row hidden>
+                    <dt>Elenco</dt>
+                    <dd data-title-details-cast></dd>
+                </div>
+                <div data-title-details-categories-row hidden>
+                    <dt>Categorías</dt>
+                    <dd data-title-details-categories></dd>
+                </div>
+                <div data-title-details-age-row hidden>
+                    <dt>Edad</dt>
+                    <dd data-title-details-age></dd>
+                </div>
+            </dl>
+            <section class="title-details-contents" data-title-details-contents hidden
+                     aria-labelledby="title-details-contents-heading">
+                <div class="title-details-contents-heading">
+                    <h3 class="h5 fw-semibold mb-0" id="title-details-contents-heading">
+                        Episodios y contenido
+                    </h3>
+                    <div class="title-details-content-filters" data-title-details-content-filters
+                         role="tablist" aria-label="Filtrar por temporada" hidden></div>
+                </div>
+                <div class="title-details-content-list" id="title-details-content-list"
+                     data-title-details-content-list role="tabpanel" aria-live="polite"></div>
+            </section>
+        </div>
+    </article>
+</section>

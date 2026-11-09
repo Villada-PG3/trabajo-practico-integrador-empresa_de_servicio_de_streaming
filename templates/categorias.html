@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+
+{% block title %}Categorías - RedFlix{% endblock %}
+
+{% block extra_css %}
+<style>
+    .categories-page {
+        min-height: 70vh;
+        padding: 3rem clamp(1rem, 5vw, 5rem) 4rem;
+        background: linear-gradient(180deg, #292020 0, #141414 22rem);
+    }
+
+    .categories-heading {
+        max-width: 1500px;
+        margin: 0 auto 2rem;
+    }
+
+    .categories-grid {
+        display: grid;
+        max-width: 1500px;
+        margin: 0 auto;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 1.25rem;
+    }
+
+    .category-card {
+        display: flex;
+        min-height: 12rem;
+        align-items: flex-end;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 0.5rem;
+        padding: 1.25rem;
+        background:
+            linear-gradient(0deg, rgba(0, 0, 0, 0.88), rgba(0, 0, 0, 0.12)),
+            linear-gradient(135deg, #5b2635, #24243b 65%, #151515);
+        color: #fff;
+        text-decoration: none;
+        transition: transform 0.2s ease, border-color 0.2s ease;
+    }
+
+    @media (max-width: 991.98px) {
+        .categories-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+
+    @media (max-width: 575.98px) {
+        .categories-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    .category-card:nth-child(4n + 2) {
+        background:
+            linear-gradient(0deg, rgba(0, 0, 0, 0.88), rgba(0, 0, 0, 0.12)),
+            linear-gradient(135deg, #174452, #24243b 65%, #151515);
+    }
+
+    .category-card:nth-child(4n + 3) {
+        background:
+            linear-gradient(0deg, rgba(0, 0, 0, 0.88), rgba(0, 0, 0, 0.12)),
+            linear-gradient(135deg, #684725, #34233b 65%, #151515);
+    }
+
+    .category-card:nth-child(4n) {
+        background:
+            linear-gradient(0deg, rgba(0, 0, 0, 0.88), rgba(0, 0, 0, 0.12)),
+            linear-gradient(135deg, #31523a, #24243b 65%, #151515);
+    }
+
+    .category-card:hover,
+    .category-card:focus-visible {
+        transform: translateY(-3px);
+        border-color: rgba(255, 255, 255, 0.6);
+        color: #fff;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="categories-page">
+    <header class="categories-heading">
+        <p class="text-uppercase text-danger fw-bold mb-2">RedFlix</p>
+        <h1 class="display-5 fw-bold mb-2">Descubre tu próxima historia</h1>
+        <p class="text-white-50 mb-0">Explora el catálogo por categoría.</p>
+    </header>
+
+    {% if categorias %}
+        <div class="categories-grid" aria-label="Categorías disponibles">
+            {% for categoria in categorias %}
+                <a class="category-card" href="{% url 'home' %}?categoria={{ categoria.pk }}">
+                    <span class="h4 fw-bold mb-0">{{ categoria.nombre }}</span>
+                </a>
+            {% endfor %}
+        </div>
+    {% else %}
+        <p class="text-white-50">Todavía no hay categorías disponibles para este perfil.</p>
+    {% endif %}
+</section>
+{% endblock %}

@@ -1,44 +1,1005 @@
-{% load static %}
+<!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}RedFlix{% endblock %}</title>
+
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+
+    <style>
+        :root {
+            --netflix-red: #E50914;
+            --netflix-black: #141414;
+            --netflix-dark-gray: #181818;
+            --netflix-light-gray: #2f2f2f;
+        }
+
+        body {
+            background-color: var(--netflix-black);
+            color: #ffffff;
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .navbar-netflix {
+            background-color: rgba(20, 20, 20);
+            transition: background-color 0.4s ease;
+        }
+
+        .average-rating-inline {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.14em;
+            margin-left: 0.3rem;
+            color: #ffc107;
+            font-size: 0.78em;
+            white-space: nowrap;
+            vertical-align: 0.08em;
+        }
+
+        .average-rating-inline > span[aria-hidden="true"] {
+            margin-right: 0.16rem;
+            color: rgba(255, 255, 255, 0.65);
+        }
+
+        .title-details-button {
+            position: absolute;
+            z-index: 4;
+            top: 0.65rem;
+            left: 0.65rem;
+            display: grid;
+            width: 2.4rem;
+            height: 2.4rem;
+            place-items: center;
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            border-radius: 50%;
+            background: rgba(15, 15, 15, 0.85);
+            color: #fff;
+            font-size: 1.15rem;
+            opacity: 0;
+            transition: opacity 0.2s ease, transform 0.2s ease;
+        }
+
+        .title-details-button:hover,
+        .title-details-button:focus-visible {
+            transform: scale(1.08);
+            background: #fff;
+            color: #141414;
+            opacity: 1;
+        }
+
+        .title-details-overlay[hidden] {
+            display: none;
+        }
+
+        .title-details-overlay {
+            position: fixed;
+            z-index: 1100;
+            inset: 0;
+            display: grid;
+            overflow-y: auto;
+            place-items: center;
+            padding: 1.25rem;
+            background: rgba(0, 0, 0, 0.82);
+            backdrop-filter: blur(5px);
+        }
+
+        .title-details-panel {
+            position: relative;
+            width: min(100%, 700px);
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            border-radius: 0.85rem;
+            background: #181818;
+            box-shadow: 0 1.5rem 5rem rgba(0, 0, 0, 0.7);
+        }
+
+        .title-details-close {
+            position: absolute;
+            z-index: 2;
+            top: 0.8rem;
+            right: 0.8rem;
+            display: grid;
+            width: 2.5rem;
+            height: 2.5rem;
+            place-items: center;
+            border: 0;
+            border-radius: 50%;
+            background: rgba(0, 0, 0, 0.75);
+            color: #fff;
+            font-size: 1.15rem;
+        }
+
+        .title-details-image-wrap {
+            position: relative;
+            height: clamp(13rem, 42vw, 22rem);
+            overflow: hidden;
+            background:
+                radial-gradient(ellipse at 75% 35%, rgba(139, 34, 55, 0.62), transparent 48%),
+                linear-gradient(125deg, #30202a, #111827 62%, #101010);
+        }
+
+        .title-details-image {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .title-details-image-caption {
+            position: absolute;
+            right: 1.5rem;
+            bottom: 1.25rem;
+            left: 1.5rem;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: baseline;
+            gap: 0.35rem 0.75rem;
+            text-shadow: 0 2px 8px rgba(0, 0, 0, 0.9);
+        }
+
+        .title-details-name {
+            margin: 0;
+            font-size: clamp(1.5rem, 4vw, 2rem);
+            font-weight: 700;
+        }
+
+        .title-details-image-caption .average-rating-inline {
+            margin-left: 0;
+            font-size: 0.95rem;
+        }
+
+        .title-details-content {
+            padding: 1.5rem clamp(1.25rem, 4vw, 2rem) 2rem;
+        }
+
+        .title-details-metadata {
+            display: grid;
+            gap: 0.65rem;
+            color: rgba(255, 255, 255, 0.72);
+        }
+
+        .title-details-metadata > div:not([hidden]) {
+            display: grid;
+            grid-template-columns: minmax(6rem, auto) 1fr;
+            gap: 0.75rem;
+        }
+
+        .title-details-metadata dt {
+            color: #fff;
+            font-weight: 600;
+        }
+
+        .title-details-metadata dd {
+            margin: 0;
+        }
+
+        .title-details-contents {
+            margin-top: 1.75rem;
+        }
+
+        .title-details-contents-heading {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .title-details-content-filters {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            gap: 0.4rem;
+        }
+
+        .title-details-content-filters[hidden] {
+            display: none;
+        }
+
+        .title-details-content-filter {
+            padding: 0.35rem 0.7rem;
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            border-radius: 999px;
+            background: transparent;
+            color: rgba(255, 255, 255, 0.72);
+            font-size: 0.875rem;
+        }
+
+        .title-details-content-filter[aria-selected="true"] {
+            border-color: #fff;
+            background: #fff;
+            color: #141414;
+        }
+
+        .title-details-content-list {
+            display: grid;
+            gap: 0.75rem;
+        }
+
+        .title-details-content-item {
+            display: grid;
+            grid-template-columns: 8rem minmax(0, 1fr) auto;
+            align-items: start;
+            gap: 1rem;
+            padding: 0.75rem;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 0.5rem;
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .title-details-content-image,
+        .title-details-content-image-placeholder {
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            border-radius: 0.35rem;
+            background: linear-gradient(145deg, #44232f, #171717 70%);
+        }
+
+        .title-details-content-image {
+            object-fit: cover;
+        }
+
+        .title-details-content-image-placeholder {
+            display: grid;
+            place-items: center;
+            color: rgba(255, 255, 255, 0.55);
+            font-size: 1.5rem;
+        }
+
+        .title-details-content-copy h4 {
+            font-size: 1rem;
+        }
+
+        .title-details-content-duration {
+            color: rgba(255, 255, 255, 0.65);
+            font-size: 0.875rem;
+            white-space: nowrap;
+        }
+
+        .title-details-actions {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 1.25rem;
+            margin-bottom: 1.25rem;
+        }
+
+        .title-rating-stars {
+            display: flex;
+            gap: 0.15rem;
+        }
+
+        .title-rating-star {
+            padding: 0.25rem;
+            border: 0;
+            background: transparent;
+            color: #ffc107;
+            font-size: 1.75rem;
+            line-height: 1;
+        }
+
+        .title-rating-star:hover,
+        .title-rating-star:focus-visible {
+            color: #ffe083;
+            transform: scale(1.12);
+        }
+
+        .title-rating-star[aria-pressed="true"] {
+            border-radius: 0.35rem;
+            background: rgba(255, 193, 7, 0.16);
+            color: #ffe083;
+            text-shadow: 0 0 0.65rem rgba(255, 193, 7, 0.65);
+        }
+
+        @media (max-width: 575.98px) {
+            .title-details-content-item {
+                grid-template-columns: 5.5rem minmax(0, 1fr);
+                gap: 0.75rem;
+            }
+
+            .title-details-content-duration {
+                grid-column: 2;
+                grid-row: 2;
+            }
+        }
+
+        .navbar-brand-logo {
+            color: #ffffff;
+            font-weight: 900;
+            font-size: 1.8rem;
+            letter-spacing: -1px;
+            text-decoration: none;
+        }
+
+        .navbar-brand-red {
+            color: var(--netflix-red);
+        }
+
+        /* Botón primario rojo Netflix */
+        .btn-netflix {
+            background-color: var(--netflix-red);
+            color: #ffffff;
+            font-weight: 600;
+            border: none;
+            padding: 0.5rem 1.25rem;
+            border-radius: 4px;
+        }
+
+        .btn-netflix:hover {
+            background-color: #c11119;
+            color: #ffffff;
+        }
+
+        /* Contenido principal */
+        main {
+            flex: 1;
+        }
+
+        /* Pie de página */
+        footer {
+            background-color: #000000;
+            color: #757575;
+            font-size: 0.85rem;
+        }
+
+        footer a {
+            color: #757575;
+            text-decoration: none;
+        }
+
+        footer a:hover {
+            text-decoration: underline;
+        }
+
+        .title-search-widget {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .title-search-form {
+            position: absolute;
+            top: 50%;
+            right: 0;
+            z-index: 20;
+            width: min(25rem, calc(100vw - 2rem));
+            padding: 0.25rem 0.35rem;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 999px;
+            background: rgba(18, 18, 18, 0.98);
+            box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.4);
+            transform: translateY(-50%);
+            transition: width 0.2s ease, border-color 0.2s ease;
+        }
+
+        .title-search-form:focus-within {
+            border-color: rgba(255, 255, 255, 0.7);
+        }
+
+        .title-search-form .form-control {
+            min-width: 0;
+            padding: 0.6rem 0.55rem;
+            border: 0 !important;
+            background: transparent !important;
+            color: #fff;
+            box-shadow: none !important;
+        }
+
+        .title-search-form .form-control::placeholder {
+            color: rgba(255, 255, 255, 0.58);
+        }
+
+        .title-search-action {
+            display: grid;
+            width: 2.4rem;
+            height: 2.4rem;
+            flex: 0 0 auto;
+            place-items: center;
+            border: 0;
+            border-radius: 50% !important;
+            color: #fff;
+        }
+
+        .title-search-action:hover,
+        .title-search-action:focus-visible {
+            background: rgba(255, 255, 255, 0.15);
+            color: #fff;
+        }
+
+        .live-search-page {
+            max-width: 1500px;
+            min-height: 60vh;
+            margin: 0 auto;
+            padding: 2rem clamp(1rem, 4vw, 3rem) 4rem;
+        }
+
+        .live-search-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr));
+            gap: 2.5rem 1rem;
+        }
+
+        .live-search-card {
+            min-width: 0;
+            color: #fff;
+            text-decoration: none;
+        }
+
+        .live-search-poster {
+            position: relative;
+            display: grid;
+            height: 150px;
+            place-items: center;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 0.5rem;
+            background: linear-gradient(145deg, #44232f, #171717 70%);
+            transition: transform 0.2s ease, border-color 0.2s ease;
+        }
+
+        .live-search-card:hover .title-details-button,
+        .live-search-card:focus-within .title-details-button,
+        .my-list-card:hover .title-details-button,
+        .my-list-card:focus-within .title-details-button {
+            opacity: 1;
+        }
+
+        .live-search-list-toggle {
+            position: absolute;
+            top: 0.55rem;
+            right: 0.55rem;
+            display: grid;
+            width: 2.4rem;
+            height: 2.4rem;
+            place-items: center;
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            border-radius: 50%;
+            background: rgba(15, 15, 15, 0.85);
+            color: #fff;
+            font-size: 1.15rem;
+        }
+
+        .live-search-list-toggle:hover,
+        .live-search-list-toggle:focus-visible {
+            background: #fff;
+            color: #141414;
+        }
+
+        .live-search-card:hover .live-search-poster,
+        .live-search-card:focus-visible .live-search-poster {
+            transform: translateY(-3px);
+            border-color: rgba(255, 255, 255, 0.55);
+        }
+
+        .live-search-poster img {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .live-search-poster-mark {
+            color: rgba(255, 255, 255, 0.88);
+            font-size: 4rem;
+            font-weight: 800;
+        }
+
+        @media (max-width: 575.98px) {
+            .title-search-form {
+                right: -2.75rem;
+                width: min(22rem, calc(100vw - 1.5rem));
+            }
+        }
+
+        @media (hover: none) {
+            .title-details-button {
+                opacity: 1;
+            }
+        }
+    </style>
+
     {% block extra_css %}{% endblock %}
 </head>
 <body>
-    {% block header %}
-        <header>
-            {% include "_header.html" %}
-        </header>
-    {% endblock %}
+
+    <!-- Header / Navbar -->
+<header>
+    <nav class="navbar navbar-expand-lg navbar-dark navbar-netflix fixed-top px-4">
+        <div class="container-fluid">
+            <a class="navbar-brand-logo me-4" href="{% if pagina_bloqueo_dispositivos or pagina_perfiles %}{% url 'perfiles' %}{% else %}{% url 'home' %}{% endif %}"><span class="navbar-brand-red">Red</span>Flix</a>
+
+            {% if not pagina_bloqueo_dispositivos %}
+            {% if not pagina_perfiles %}
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+            {% endif %}
+
+            <div class="{% if not pagina_perfiles %}collapse navbar-collapse{% else %}ms-auto{% endif %}" id="navbarContent">
+                {% if user.is_authenticated %}
+                    {% if pagina_perfiles %}
+                        <form method="post" action="{% url 'logout' %}">
+                            {% csrf_token %}
+                            <button class="btn btn-outline-light btn-sm" type="submit">Cerrar sesión</button>
+                        </form>
+                    {% else %}
+                        <!-- Menú para usuarios con sesión iniciada -->
+                        <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                            <li class="nav-item">
+                                <a class="nav-link{% if not filtro_tipo and not filtro_categoria_id and not pagina_mi_lista and not pagina_categorias %} active{% endif %}"
+                                   href="{% url 'home' %}">Inicio</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link{% if filtro_tipo == 'series' %} active{% endif %}"
+                                   href="{% url 'home' %}?tipo=series">Series</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link{% if filtro_tipo == 'peliculas' %} active{% endif %}"
+                                   href="{% url 'home' %}?tipo=peliculas">Películas</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link{% if pagina_mi_lista %} active{% endif %}"
+                                   href="{% url 'mi_lista' %}">Mi Lista</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link{% if pagina_categorias or filtro_categoria_id %} active{% endif %}"
+                                   href="{% url 'categorias' %}">Categorías</a>
+                            </li>
+                        </ul>
+
+                        <div class="d-flex align-items-center gap-3">
+                            <div class="title-search-widget">
+                                <button type="button" class="btn btn-link text-light fs-5 p-0"
+                                        data-title-search-open aria-label="Abrir búsqueda"
+                                        aria-expanded="false" aria-controls="title-search-form">
+                                    <i class="bi bi-search" aria-hidden="true"></i>
+                                </button>
+                                <form class="title-search-form d-none" id="title-search-form"
+                                      role="search" data-title-search-form
+                                      data-search-url="{% url 'buscar_titulos' %}">
+                                    {% csrf_token %}
+                                    <div class="d-flex align-items-center gap-1">
+                                        <span class="text-white-50 ps-2" aria-hidden="true">
+                                            <i class="bi bi-search"></i>
+                                        </span>
+                                        <input type="search" class="form-control"
+                                               placeholder="Buscar títulos" aria-label="Buscar títulos"
+                                               autocomplete="off" minlength="2" data-title-search-input>
+                                        <button class="btn title-search-action" type="button" data-title-search-close
+                                                aria-label="Cerrar búsqueda">
+                                            <i class="bi bi-x-lg" aria-hidden="true"></i>
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                            <div class="dropdown">
+                                <button class="btn btn-secondary dropdown-toggle bg-transparent border-0 d-flex align-items-center gap-2" type="button" data-bs-toggle="dropdown">
+                                    {% if perfil_activo %}
+                                        <img src="{{ perfil_activo.imagen.imagen.url }}" alt="" class="rounded-circle" width="32" height="32">
+                                        <span class="text-light small">{{ perfil_activo.nombre }}</span>
+                                    {% else %}
+                                        <i class="bi bi-person-square fs-4"></i>
+                                        <span class="text-light small">{{ user.email|default:user.username }}</span>
+                                    {% endif %}
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end dropdown-menu-dark">
+                                    <li><a class="dropdown-item" href="{% url 'perfiles' %}">Cambiar Perfil</a></li>
+                                    <li><a class="dropdown-item{% if pagina_cuenta %} active{% endif %}"
+                                           href="{% url 'cuenta' %}">Cuenta</a></li>
+                                    {% if user.is_staff %}
+                                        <li><a class="dropdown-item{% if pagina_estadisticas %} active{% endif %}"
+                                               href="{% url 'reporte_ventas' %}">
+                                            <i class="bi bi-graph-up-arrow me-2" aria-hidden="true"></i>Estadísticas
+                                        </a></li>
+                                    {% endif %}
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li>
+                                        <form method="post" action="{% url 'logout' %}">
+                                            {% csrf_token %}
+                                            <button class="dropdown-item text-danger" type="submit">Cerrar sesión</button>
+                                        </form>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                    {% endif %}
+                {% else %}
+                    <!-- Menú para visitantes / landing page con botones de Login y Registro -->
+                    <div class="ms-auto d-flex align-items-center gap-3">
+                        <a href="{% url 'login' %}" class="text-white text-decoration-none fw-semibold">Iniciar sesión</a>
+                        <a href="{% url 'registro' %}" class="btn btn-netflix btn-sm">Registrarse</a>
+                    </div>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+    </nav>
+</header>
+
     <div style="margin-top: 70px;"></div>
-    {% include "_header.html" %}
+
     {% if messages %}
         <div class="container mt-3">
             {% for message in messages %}
-                <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                <div class="alert alert-{% if message.tags == 'error' %}danger{% else %}{{ message.tags }}{% endif %} alert-dismissible fade show" role="alert">
                     {{ message }}
                     <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                 </div>
             {% endfor %}
         </div>
     {% endif %}
+
     <main>
+        <section class="live-search-page d-none" data-live-search-page aria-live="polite">
+            <div class="d-flex flex-wrap align-items-end justify-content-between gap-3 mb-4">
+                <div>
+                    <h1 class="h2 fw-bold mb-1">Resultados de búsqueda</h1>
+                    <p class="text-white-50 mb-0" data-live-search-summary></p>
+                </div>
+            </div>
+            <div class="live-search-grid" data-live-search-grid></div>
+            <p class="text-white-50 d-none" data-live-search-empty></p>
+        </section>
+        <div data-page-content>
         {% block content %}
         {% endblock %}
+        </div>
     </main>
-    {% block footer %}
-        <footer class="py-5 mt-auto">
-            {% include "_footer.html" %}
-        </footer>
-    {% endblock %}
-    <!-- CDN corregido de Bootstrap 5 JS -->
+
+    {% if user.is_authenticated and perfil_activo and not pagina_perfiles %}
+    {% include "partials/title_details.html" %}
+    {% endif %}
+
+    {% if not pagina_perfiles %}
+    <footer class="py-5 mt-auto">
+        <div class="container">
+            <p class="mb-4">¿Preguntas? Llama al 0800-123-4567</p>
+            <div class="row g-3">
+                <div class="col-6 col-md-3">
+                    <ul class="list-unstyled">
+                        <li class="mb-2"><a href="#">Preguntas frecuentes</a></li>
+                        <li class="mb-2"><a href="#">Inversores</a></li>
+                        <li class="mb-2"><a href="#">Formas de ver</a></li>
+                    </ul>
+                </div>
+                <div class="col-6 col-md-3">
+                    <ul class="list-unstyled">
+                        <li class="mb-2"><a href="#">Centro de ayuda</a></li>
+                        <li class="mb-2"><a href="#">Empleo</a></li>
+                        <li class="mb-2"><a href="{% url 'cuenta' %}?seccion=mas-info">Términos de uso</a></li>
+                    </ul>
+                </div>
+                <div class="col-6 col-md-3">
+                    <ul class="list-unstyled">
+                        <li class="mb-2"><a href="{% url 'cuenta' %}">Cuenta</a></li>
+                        <li class="mb-2"><a href="#">Canjear tarjetas</a></li>
+                        <li class="mb-2"><a href="{% url 'cuenta' %}?seccion=mas-info">Privacidad</a></li>
+                    </ul>
+                </div>
+                <div class="col-6 col-md-3">
+                    <ul class="list-unstyled">
+                        <li class="mb-2"><a href="#">Prensa</a></li>
+                        <li class="mb-2"><a href="#">Comprar tarjetas</a></li>
+                        <li class="mb-2"><a href="#">Contáctanos</a></li>
+                    </ul>
+                </div>
+            </div>
+            <p class="mt-4 mb-0 small">&copy; RedFlix - Todos los derechos reservados.</p>
+        </div>
+    </footer>
+    {% endif %}
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    
+    {% if user.is_authenticated and not pagina_bloqueo_dispositivos %}
+    <form id="device-heartbeat-form" class="d-none">
+        {% csrf_token %}
+    </form>
+    <script>
+        (() => {
+            const csrfToken = document.querySelector(
+                '#device-heartbeat-form [name="csrfmiddlewaretoken"]',
+            )?.value;
+            if (!csrfToken) {
+                return;
+            }
+
+            const enviarActividad = async () => {
+                if (document.visibilityState === 'hidden') {
+                    return;
+                }
+                try {
+                    const response = await fetch(
+                        '{% url "heartbeat_dispositivo" %}',
+                        {
+                            method: 'POST',
+                            headers: {'X-CSRFToken': csrfToken},
+                            credentials: 'same-origin',
+                        },
+                    );
+                    if (response.redirected) {
+                        window.location.assign(response.url);
+                    }
+                } catch (error) {
+                    console.error('No se pudo actualizar la actividad del dispositivo.', error);
+                }
+            };
+
+            window.setInterval(enviarActividad, 25000);
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible') {
+                    enviarActividad();
+                }
+            });
+        })();
+    </script>
+    {% endif %}
+    {% if user.is_authenticated and perfil_activo and not pagina_perfiles %}
+    <script>
+        const titleSearchForm = document.querySelector('[data-title-search-form]');
+        if (titleSearchForm) {
+            const openButton = document.querySelector('[data-title-search-open]');
+            const closeButton = titleSearchForm.querySelector('[data-title-search-close]');
+            const input = titleSearchForm.querySelector('[data-title-search-input]');
+            const searchPage = document.querySelector('[data-live-search-page]');
+            const searchGrid = searchPage.querySelector('[data-live-search-grid]');
+            const searchSummary = searchPage.querySelector('[data-live-search-summary]');
+            const searchEmpty = searchPage.querySelector('[data-live-search-empty]');
+            const pageContent = document.querySelector('[data-page-content]');
+            let searchTimer;
+            let searchRequest;
+
+            const showPageContent = () => {
+                searchPage.classList.add('d-none');
+                pageContent.classList.remove('d-none');
+            };
+
+            const closeSearch = () => {
+                titleSearchForm.classList.add('d-none');
+                openButton.classList.remove('d-none');
+                openButton.setAttribute('aria-expanded', 'false');
+                input.value = '';
+                searchRequest?.abort();
+                showPageContent();
+            };
+
+            openButton.addEventListener('click', () => {
+                openButton.classList.add('d-none');
+                titleSearchForm.classList.remove('d-none');
+                openButton.setAttribute('aria-expanded', 'true');
+                input.focus();
+            });
+            closeButton.addEventListener('click', closeSearch);
+            titleSearchForm.addEventListener('submit', (event) => {
+                event.preventDefault();
+            });
+            document.addEventListener('keydown', (event) => {
+                if (event.key === 'Escape' && !titleSearchForm.classList.contains('d-none')) {
+                    closeSearch();
+                    openButton.focus();
+                }
+            });
+
+            input.addEventListener('input', () => {
+                window.clearTimeout(searchTimer);
+                searchRequest?.abort();
+                const query = input.value.trim();
+                if (query.length < 2) {
+                    showPageContent();
+                    return;
+                }
+
+                pageContent.classList.add('d-none');
+                searchPage.classList.remove('d-none');
+                searchSummary.textContent = `Buscando “${query}”…`;
+                searchGrid.replaceChildren();
+                searchEmpty.classList.add('d-none');
+                searchTimer = window.setTimeout(async () => {
+                    searchRequest = new AbortController();
+                    try {
+                        const url = new URL(titleSearchForm.dataset.searchUrl, window.location.origin);
+                        url.searchParams.set('q', query);
+                        const response = await fetch(url, {
+                            headers: { 'Accept': 'application/json' },
+                            credentials: 'same-origin',
+                            signal: searchRequest.signal,
+                        });
+                        const data = await response.json();
+                        if (!response.ok) {
+                            throw new Error(data.error || 'No se pudo completar la búsqueda.');
+                        }
+
+                        searchGrid.replaceChildren();
+                        data.resultados.forEach((resultado) => {
+                            const card = document.createElement('div');
+                            card.className = 'live-search-card';
+                            const poster = document.createElement('div');
+                            poster.className = 'live-search-poster';
+                            if (resultado.imagen) {
+                                const image = document.createElement('img');
+                                image.src = resultado.imagen;
+                                image.alt = '';
+                                image.loading = 'lazy';
+                                poster.append(image);
+                            } else {
+                                const mark = document.createElement('span');
+                                mark.className = 'live-search-poster-mark';
+                                mark.setAttribute('aria-hidden', 'true');
+                                mark.textContent = resultado.nombre.slice(0, 1).toUpperCase();
+                                poster.append(mark);
+                            }
+                            const nombre = document.createElement('span');
+                            nombre.className = 'd-flex align-items-center fw-semibold pt-2';
+                            nombre.textContent = resultado.nombre;
+                            if (resultado.estrellas_promedio) {
+                                const rating = document.createElement('span');
+                                rating.className = 'average-rating-inline';
+                                rating.setAttribute(
+                                    'aria-label',
+                                    `Promedio de ${resultado.porcentaje_promedio}%`,
+                                );
+                                const separator = document.createElement('span');
+                                separator.textContent = '|';
+                                separator.setAttribute('aria-hidden', 'true');
+                                rating.append(separator);
+                                const averageValue = document.createElement('span');
+                                averageValue.textContent = `${Number(
+                                    resultado.porcentaje_promedio,
+                                ).toFixed(Number.isInteger(Number(
+                                    resultado.porcentaje_promedio,
+                                )) ? 0 : 1)}%`;
+                                rating.append(averageValue);
+                                for (let star = 1; star <= 5; star += 1) {
+                                    const icon = document.createElement('i');
+                                    icon.className = `bi ${
+                                        star <= resultado.estrellas_promedio
+                                            ? 'bi-star-fill'
+                                            : 'bi-star'
+                                    }`;
+                                    icon.setAttribute('aria-hidden', 'true');
+                                    rating.append(icon);
+                                }
+                                nombre.append(rating);
+                            }
+                            const tipo = document.createElement('span');
+                            tipo.className = 'small text-white-50';
+                            tipo.textContent = resultado.tipo;
+                            const detailsButton = document.createElement('button');
+                            detailsButton.type = 'button';
+                            detailsButton.className = 'title-details-button';
+                            detailsButton.dataset.titleDetailsOpen = '';
+                            detailsButton.dataset.titleId = resultado.id;
+                            detailsButton.dataset.titleName = resultado.nombre;
+                            detailsButton.dataset.titleDescription = resultado.descripcion || '';
+                            detailsButton.dataset.titleCast = resultado.elenco || '';
+                            detailsButton.dataset.titleCategories = resultado.categorias || '';
+                            detailsButton.dataset.titleAge = resultado.edad || '';
+                            detailsButton.dataset.titleImage = resultado.imagen;
+                            detailsButton.dataset.titleContents = JSON.stringify(
+                                resultado.contenidos || [],
+                            );
+                            detailsButton.dataset.titleRating = resultado.puntuacion_perfil;
+                            detailsButton.dataset.titleAverage = resultado.estrellas_promedio;
+                            detailsButton.dataset.titleAveragePercent =
+                                resultado.porcentaje_promedio;
+                            detailsButton.dataset.titleInList = String(resultado.en_mi_lista);
+                            detailsButton.dataset.titleToggleUrl = resultado.toggle_url;
+                            detailsButton.dataset.titleRatingUrl = resultado.rating_url;
+                            detailsButton.setAttribute(
+                                'aria-label',
+                                `Ver detalles y calificar: ${resultado.nombre}`,
+                            );
+                            detailsButton.title = 'Detalles y calificación';
+                            const detailsIcon = document.createElement('i');
+                            detailsIcon.className = 'bi bi-list';
+                            detailsIcon.setAttribute('aria-hidden', 'true');
+                            detailsButton.append(detailsIcon);
+                            const toggleForm = document.createElement('form');
+                            toggleForm.method = 'post';
+                            toggleForm.action = resultado.toggle_url;
+                            toggleForm.dataset.searchListToggle = '';
+                            toggleForm.dataset.titleName = resultado.nombre;
+                            const csrfInput = document.createElement('input');
+                            csrfInput.type = 'hidden';
+                            csrfInput.name = 'csrfmiddlewaretoken';
+                            csrfInput.value = titleSearchForm.querySelector(
+                                '[name="csrfmiddlewaretoken"]',
+                            ).value;
+                            const nextInput = document.createElement('input');
+                            nextInput.type = 'hidden';
+                            nextInput.name = 'next';
+                            nextInput.value = window.location.pathname + window.location.search;
+                            const toggleButton = document.createElement('button');
+                            toggleButton.type = 'submit';
+                            toggleButton.className = 'live-search-list-toggle';
+                            toggleButton.setAttribute(
+                                'aria-label',
+                                `${resultado.en_mi_lista ? 'Quitar de' : 'Agregar a'} Mi Lista: ${resultado.nombre}`,
+                            );
+                            toggleButton.title = resultado.en_mi_lista
+                                ? 'Quitar de Mi Lista'
+                                : 'Agregar a Mi Lista';
+                            const toggleIcon = document.createElement('i');
+                            toggleIcon.className = `bi ${resultado.en_mi_lista ? 'bi-check-lg' : 'bi-plus-lg'}`;
+                            toggleIcon.setAttribute('aria-hidden', 'true');
+                            toggleButton.append(toggleIcon);
+                            toggleForm.append(csrfInput, nextInput, toggleButton);
+                            poster.append(detailsButton);
+                            poster.append(toggleForm);
+                            card.append(poster, nombre, tipo);
+                            searchGrid.append(card);
+                        });
+                        searchSummary.textContent = `${data.resultados.length} título${data.resultados.length === 1 ? '' : 's'} para “${query}”`;
+                        searchEmpty.textContent = data.resultados.length
+                            ? ''
+                            : 'No se encontraron títulos coincidentes.';
+                        searchEmpty.classList.toggle('d-none', data.resultados.length > 0);
+                    } catch (error) {
+                        if (error.name !== 'AbortError') {
+                            searchGrid.replaceChildren();
+                            searchSummary.textContent = 'No se pudo completar la búsqueda.';
+                            searchEmpty.textContent = error.message || 'Intenta nuevamente.';
+                            searchEmpty.classList.remove('d-none');
+                        }
+                    }
+                }, 200);
+            });
+
+            searchGrid.addEventListener('submit', async (event) => {
+                const form = event.target.closest('[data-search-list-toggle]');
+                if (!form) {
+                    return;
+                }
+                event.preventDefault();
+
+                const button = form.querySelector('button[type="submit"]');
+                if (!button || button.disabled) {
+                    return;
+                }
+                button.disabled = true;
+                try {
+                    const response = await fetch(form.action, {
+                        method: 'POST',
+                        body: new FormData(form),
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'Accept': 'application/json',
+                        },
+                        credentials: 'same-origin',
+                    });
+                    const result = await response.json();
+                    if (!response.ok) {
+                        throw new Error(result.error || 'No se pudo actualizar Mi Lista.');
+                    }
+
+                    button.querySelector('i').className =
+                        `bi ${result.en_mi_lista ? 'bi-check-lg' : 'bi-plus-lg'}`;
+                    button.setAttribute(
+                        'aria-label',
+                        `${result.en_mi_lista ? 'Quitar de' : 'Agregar a'} Mi Lista: ${form.dataset.titleName}`,
+                    );
+                    button.title = result.en_mi_lista
+                        ? 'Quitar de Mi Lista'
+                        : 'Agregar a Mi Lista';
+                } catch (error) {
+                    searchSummary.textContent =
+                        error.message || 'No se pudo actualizar Mi Lista.';
+                } finally {
+                    button.disabled = false;
+                }
+            });
+        }
+    </script>
+    {% endif %}
+    {% if not pagina_inicio and user.is_authenticated and perfil_activo and not pagina_perfiles %}
+    {% include "partials/title_details_script.html" %}
+    {% endif %}
     {% block extra_js %}{% endblock %}
 </body>
 </html>

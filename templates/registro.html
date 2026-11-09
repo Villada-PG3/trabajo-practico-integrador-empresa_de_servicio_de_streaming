@@ -1,53 +1,56 @@
 {% extends "base.html" %}
 
-{% block title %}Registrarse - StreamingApp{% endblock %}
+{% block title %}Registrarse - RedFlix{% endblock %}
+
+{% block extra_css %}
+<style>
+    .registration-card .form-label {
+        color: #fff;
+    }
+
+    .registration-card .form-control,
+    .registration-card .form-select {
+        color: #fff;
+    }
+
+    .registration-card .form-control::placeholder {
+        color: #dedede;
+        opacity: 1;
+    }
+
+    .registration-card .form-select option {
+        background-color: #212529;
+        color: #fff;
+    }
+</style>
+{% endblock %}
 
 {% block content %}
 <div class="container d-flex align-items-center justify-content-center" style="min-height: 85vh;">
-    <div class="card bg-dark text-white p-4 shadow-lg border-0 rounded-3" style="max-width: 500px; width: 100%;">
+    <div class="card registration-card bg-dark text-white p-4 shadow-lg border-0 rounded-3" style="max-width: 620px; width: 100%;">
         <div class="card-body">
             <h2 class="fw-bold mb-3">Crea una cuenta para comenzar</h2>
-            <p class="text-secondary small mb-4">Solo unos pocos pasos y estarás disfrutando de todo nuestro contenido.</p>
+            <p class="text-white-50 small mb-4">Completa tus datos de usuario. Después podrás elegir un plan y registrar una tarjeta de prueba.</p>
 
-            {% if messages %}
-                {% for message in messages %}
-                    <div class="alert alert-danger py-2" role="alert">
-                        {{ message }}
-                    </div>
+            {% if form.non_field_errors %}
+                {% for error in form.non_field_errors %}
+                    <div class="alert alert-danger py-2" role="alert">{{ error }}</div>
                 {% endfor %}
             {% endif %}
 
             <form method="POST" action="{% url 'registro' %}">
                 {% csrf_token %}
-                
-                <!-- Email -->
-                <div class="mb-3">
-                    <label for="id_email" class="form-label text-white-50 fw-semibold">Correo electrónico</label>
-                    <input type="email" name="email" class="form-control bg-secondary text-white border-0 py-2 fs-6" id="id_email" placeholder="Ingresa tu email" required>
-                </div>
-
-                <!-- Contraseña -->
-                <div class="mb-3">
-                    <label for="id_password" class="form-label text-white-50 fw-semibold">Contraseña</label>
-                    <input type="password" name="password" class="form-control bg-secondary text-white border-0 py-2 fs-6" id="id_password" placeholder="Crea tu contraseña" required>
-                </div>
-
-                <!-- Confirmar Contraseña -->
-                <div class="mb-3">
-                    <label for="id_password2" class="form-label text-white-50 fw-semibold">Repetir Contraseña</label>
-                    <input type="password" name="password2" class="form-control bg-secondary text-white border-0 py-2 fs-6" id="id_password2" 
-                    placeholder="Repite la contraseña" required>
-                </div>
-
-                <!-- Teléfono -->
-                <div class="mb-4">
-                    <label for="id_telefono" class="form-label text-white-50 fw-semibold">Teléfono (opcional)</label>
-                    <input type="text" name="telefono" class="form-control bg-secondary text-white border-0 py-2 fs-6" id="id_telefono" placeholder="Ingresa tu número de teléfono">
-                </div>
-
-                <!-- Botón Continuar -->
+                {% for field in form %}
+                    <div class="mb-3">
+                        <label for="{{ field.id_for_label }}" class="form-label fw-semibold">{{ field.label }}</label>
+                        {{ field }}
+                        {% for error in field.errors %}
+                            <div class="text-warning small mt-1">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+                {% endfor %}
                 <button class="btn btn-danger w-100 py-2 fs-5 fw-semibold mb-3" type="submit">
-                    Siguiente: Elegir Plan &gt;
+                    Continuar a planes &gt;
                 </button>
             </form>
 
