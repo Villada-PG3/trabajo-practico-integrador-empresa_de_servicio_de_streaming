@@ -1,21 +1,25 @@
 import json
+from datetime import date
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 import unicodedata
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from django.contrib import messages
-from django.contrib.auth import (
-    authenticate,
-    get_user_model,
-    login,
-    logout,
-    update_session_auth_hash,
-)
-from django.contrib.auth.decorators import login_required
 from django.contrib.auth import SESSION_KEY as AUTH_SESSION_KEY
-from django.core.files.storage import default_storage
+from django.contrib.auth import (authenticate, get_user_model, login, logout,
+                                 update_session_auth_hash)
+from django.contrib.auth.decorators import login_required
+from django.contrib.sessions.models import Session
 from django.core.exceptions import PermissionDenied
+from django.core.files.storage import default_storage
 from django.db import transaction
+from django.db.models import (Avg, Case, CharField, Count, ExpressionWrapper,
+                              F, FloatField, IntegerField, Max, OuterRef,
+                              Prefetch, Q, Subquery, Value, When)
+from django.db.models.functions import Coalesce, NullIf, Trim
+from django.http import HttpResponse, JsonResponse
+from django.shortcuts import get_object_or_404, redirect, render
 from django.db.models import (
     Case,
     CharField,
@@ -38,51 +42,19 @@ from django.http import Http404, HttpResponse, JsonResponse
 from django.contrib.sessions.models import Session
 from django.shortcuts import redirect, render
 from django.urls import reverse
-from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST
 
-from .forms import (
-    CuentaPreferenciasForm,
-    EditarCuentaForm,
-    LoginForm,
-    PerfilForm,
-    RegistroForm,
-    ReporteVentasFiltroForm,
-    TarjetaDemoPlanForm,
-)
-from .billing import (
-    calcular_proximo_cobro,
-    fecha_inicio_suscripcion,
-    guardar_tarjeta_demo,
-    suscripcion_activa,
-)
+from .billing import (calcular_proximo_cobro, fecha_inicio_suscripcion,
+                      guardar_tarjeta_demo, suscripcion_activa)
+from .forms import (CuentaPreferenciasForm, EditarCuentaForm, LoginForm,
+                    PerfilForm, RegistroForm, ReporteVentasFiltroForm,
+                    TarjetaDemoPlanForm)
 from .middleware import CLAVE_ADMISION_DISPOSITIVO_PENDIENTE
-from .models import (
-    Categoria,
-    Calificacion,
-    CalidadIdiomaContenido,
-    CambioPlan,
-    Cobro,
-    EstadoCobro,
-    Contenido,
-    Idioma,
-    IdiomaContenido,
-    IdiomaTitulo,
-    Plan,
-    PlanCalidad,
-    Perfil,
-    PerfilTitulo,
-    Porver,
-    Precio,
-    Registro,
-    Suscripcion,
-    Subtitulo,
-    Tarjeta,
-    Titulo,
-    TituloRolElenco,
-)
+from .models import *
+
 
 LIMITE_TITULOS_CARRUSEL = 30
 LIMITE_PERFILES = 5
@@ -313,6 +285,7 @@ def asignar_contenidos_detalle(titulos, idioma_id=None):
                     )
 
             titulo.contenidos_detalle.append({
+                'id': contenido.id,
                 'seccion': contenido.seccion,
                 'orden': contenido.orden,
                 'nombre': nombre,
@@ -2015,92 +1988,6 @@ def pagar_suscripcion_view(request, plan_id):
         'suscripcion_inicial': True,
     })
 
-
-@login_required
-def pagar_cambio_plan_view(request, plan_id):
-    hoy = timezone.localdate()
-    suscripcion = (
-        Suscripcion.objects.filter(usuario=request.user, habilitado=True)
-        .select_related('plan')
-        .order_by('-fecha_inscripcion', '-pk')
-        .first()
-    )
-    if suscripcion is None:
-        messages.error(request, 'No tienes una suscripción activa para cambiar.')
-        return redirect('seleccionar_plan')
-
-    if suscripcion.cambios_programados.filter(
-        estado=CambioPlan.ESTADO_PENDIENTE,
-    ).exists():
-        messages.info(request, 'Ya tienes un cambio de plan pendiente.')
-        return redirect(f'{reverse("cuenta")}?seccion=suscripcion')
-
-    precio_vigente = Precio.objects.filter(
-        plan_id=plan_id,
-        fecha_inicio__lte=hoy,
-    ).filter(
-        Q(fecha_fin__isnull=True) | Q(fecha_fin__gte=hoy),
-    ).order_by('-fecha_inicio', '-pk').first()
-    plan = precio_vigente.plan if precio_vigente else None
-    if plan is None or plan.pk == suscripcion.plan_id:
-        messages.error(request, 'Selecciona un plan distinto con precio vigente.')
-        return redirect(f'{reverse("seleccionar_plan")}?cambiar=1')
-
-    fecha_aplicacion = calcular_proximo_cobro(
-        suscripcion.fecha_vigencia,
-    ) or hoy
-    form = TarjetaDemoPlanForm(request.POST or None)
-    if request.method == 'POST' and form.is_valid():
-        with transaction.atomic():
-            suscripcion = Suscripcion.objects.select_for_update().get(
-                pk=suscripcion.pk,
-                usuario=request.user,
-                habilitado=True,
-            )
-            if suscripcion.plan_id == plan.pk:
-                messages.error(request, 'El plan seleccionado ya es tu plan actual.')
-                return redirect(f'{reverse("seleccionar_plan")}?cambiar=1')
-            if suscripcion.cambios_programados.filter(
-                estado=CambioPlan.ESTADO_PENDIENTE,
-            ).exists():
-                messages.info(request, 'Ya tienes un cambio de plan pendiente.')
-                return redirect(f'{reverse("cuenta")}?seccion=suscripcion')
-            fecha_aplicacion = calcular_proximo_cobro(
-                suscripcion.fecha_vigencia,
-            ) or hoy
-            tarjeta = guardar_tarjeta_demo(
-                form.cleaned_data['nombre_titular'],
-                form.cleaned_data['numero_tarjeta'],
-                form.cleaned_data['marca_tarjeta'],
-                form.cleaned_data['metodo_pago'],
-                hoy,
-            )
-            suscripcion.tarjeta = tarjeta
-            suscripcion.save(update_fields=['tarjeta'])
-            CambioPlan.objects.create(
-                suscripcion=suscripcion,
-                plan=plan,
-                fecha_aplicacion=fecha_aplicacion,
-                nombre_titular=form.cleaned_data['nombre_titular'],
-                tarjeta_ultimos4=tarjeta.numero,
-            )
-        messages.success(
-            request,
-            f'El cambio a {plan.nombre} se pondrá en vigencia en la fecha del '
-            f'próximo cobro: {fecha_aplicacion:%d/%m/%Y}. '
-            'El cobro de demostración quedará por aprobar.',
-        )
-        return redirect(f'{reverse("cuenta")}?seccion=suscripcion')
-
-    return render(request, 'pagar_cambio_plan.html', {
-        'form': form,
-        'plan': plan,
-        'suscripcion': suscripcion,
-        'fecha_aplicacion': fecha_aplicacion,
-        'precio': precio_vigente,
-    })
-
-
 @login_required(login_url='login')
 def reporte_ventas_view(request):
     if not request.user.is_staff:
@@ -2230,3 +2117,184 @@ def reporte_ventas_view(request):
         'pagina_estadisticas': True,
     }
     return render(request, 'reporte_ventas.html', context)
+
+
+@login_required
+def pagar_cambio_plan_view(request, plan_id):
+    hoy = timezone.localdate()
+    suscripcion = (
+        Suscripcion.objects.filter(usuario=request.user, habilitado=True)
+        .select_related('plan')
+        .order_by('-fecha_inscripcion', '-pk')
+        .first()
+    )
+    if suscripcion is None:
+        messages.error(request, 'No tienes una suscripción activa para cambiar.')
+        return redirect('seleccionar_plan')
+
+    if suscripcion.cambios_programados.filter(
+        estado=CambioPlan.ESTADO_PENDIENTE,
+    ).exists():
+        messages.info(request, 'Ya tienes un cambio de plan pendiente.')
+        return redirect(f'{reverse("cuenta")}?seccion=suscripcion')
+
+    precio_vigente = Precio.objects.filter(
+        plan_id=plan_id,
+        fecha_inicio__lte=hoy,
+    ).filter(
+        Q(fecha_fin__isnull=True) | Q(fecha_fin__gte=hoy),
+    ).order_by('-fecha_inicio', '-pk').first()
+    plan = precio_vigente.plan if precio_vigente else None
+    if plan is None or plan.pk == suscripcion.plan_id:
+        messages.error(request, 'Selecciona un plan distinto con precio vigente.')
+        return redirect(f'{reverse("seleccionar_plan")}?cambiar=1')
+
+    fecha_aplicacion = calcular_proximo_cobro(
+        suscripcion.fecha_vigencia,
+    ) or hoy
+    form = TarjetaDemoPlanForm(request.POST or None)
+    if request.method == 'POST' and form.is_valid():
+        with transaction.atomic():
+            suscripcion = Suscripcion.objects.select_for_update().get(
+                pk=suscripcion.pk,
+                usuario=request.user,
+                habilitado=True,
+            )
+            if suscripcion.plan_id == plan.pk:
+                messages.error(request, 'El plan seleccionado ya es tu plan actual.')
+                return redirect(f'{reverse("seleccionar_plan")}?cambiar=1')
+            if suscripcion.cambios_programados.filter(
+                estado=CambioPlan.ESTADO_PENDIENTE,
+            ).exists():
+                messages.info(request, 'Ya tienes un cambio de plan pendiente.')
+                return redirect(f'{reverse("cuenta")}?seccion=suscripcion')
+            fecha_aplicacion = calcular_proximo_cobro(
+                suscripcion.fecha_vigencia,
+            ) or hoy
+            tarjeta = guardar_tarjeta_demo(
+                form.cleaned_data['nombre_titular'],
+                form.cleaned_data['numero_tarjeta'],
+                form.cleaned_data['marca_tarjeta'],
+                form.cleaned_data['metodo_pago'],
+                hoy,
+            )
+            suscripcion.tarjeta = tarjeta
+            suscripcion.save(update_fields=['tarjeta'])
+            CambioPlan.objects.create(
+                suscripcion=suscripcion,
+                plan=plan,
+                fecha_aplicacion=fecha_aplicacion,
+                nombre_titular=form.cleaned_data['nombre_titular'],
+                tarjeta_ultimos4=tarjeta.numero,
+            )
+        messages.success(
+            request,
+            f'El cambio a {plan.nombre} se pondrá en vigencia en la fecha del '
+            f'próximo cobro: {fecha_aplicacion:%d/%m/%Y}. '
+            'El cobro de demostración quedará por aprobar.',
+        )
+        return redirect(f'{reverse("cuenta")}?seccion=suscripcion')
+
+    return render(request, 'pagar_cambio_plan.html', {
+        'form': form,
+        'plan': plan,
+        'suscripcion': suscripcion,
+        'fecha_aplicacion': fecha_aplicacion,
+        'precio': precio_vigente,
+    })
+
+def puede_ver_perfil(perfil, contenido):
+    # lo podria acortar pero no se si no le tengo que poner mas chequeos mas adelante
+    if perfil.tipo_perfil.edad_max > contenido.titulo.edad_minima:
+        return True
+    else:
+        return False
+
+
+@login_required
+def reproductor(request, contenido_id):
+    contenido = get_object_or_404(Contenido, pk=contenido_id)
+    perfil = get_object_or_404(Perfil, pk=request.session[SESION_PERFIL_ACTIVO])
+    usuario = request.user
+    if request.method == 'GET':
+        if not puede_ver_perfil(perfil, contenido):
+            return redirect('home')
+        progreso, _ = PerfilContenido.objects.get_or_create(
+            perfil=perfil,
+            contenido=contenido,
+            defaults={
+                "segundos_vistos": 0,
+                "ultima_visualizacion": timezone.now(),
+            }
+        )
+        tiempo = progreso.segundos_vistos
+        
+        calidades = Calidad.objects.filter(
+            plan_calidades__plan__suscripciones__usuario=usuario,
+            plan_calidades__plan__suscripciones__habilitado=True
+        ).order_by('-id').distinct()
+
+        siguiente_capitulo = contenido.titulo.contenidos.filter(
+            Q(seccion__gt=contenido.seccion) |
+            Q(seccion=contenido.seccion, orden__gt=contenido.orden)
+        ).order_by('seccion', 'orden').first()
+
+        # es un caso raro, pero si el cliente busca un contenido que no esta en su idioma
+        # predeterminado o calidad, cicla por los idiomas y calidades hasta encontrar uno que exista para evitar errores.
+        # si no encuentra nada, tira un 404
+        calidad_idioma_contenido = None
+        idiomas = Idioma.objects.order_by(
+            models.Case(
+                models.When(pk=usuario.idioma_id, then=0),
+                default=1,
+            )
+        )
+        for idioma in idiomas:
+            try:
+                ic = IdiomaContenido.objects.get(contenido=contenido,idioma=idioma,)
+            except IdiomaContenido.DoesNotExist:
+                continue
+            for calidad in calidades:
+                try:
+                    calidad_idioma_contenido = CalidadIdiomaContenido.objects.get(idioma_contenido=ic,calidad=calidad,)
+                    break
+                except CalidadIdiomaContenido.DoesNotExist:
+                    continue
+
+            if calidad_idioma_contenido:
+                break
+        if not calidad_idioma_contenido:
+            return not_found_view(request)
+
+        subtitulos = Subtitulo.objects.filter(contenido=contenido,idioma=usuario.idioma)
+        
+        return render(request, "reproductor.html", {
+            "contenido": calidad_idioma_contenido,
+            "nombre": contenido.nombre,
+            "tiempo": tiempo,
+            "subtitulos": subtitulos,
+            "calidades": calidades,
+            "siguiente_capitulo": siguiente_capitulo,
+        })
+        
+    if request.method == 'POST':
+        try:
+            segundos = int(request.POST.get("segundos_vistos"))
+            segundos = max(0, segundos)
+        except (ValueError, TypeError):
+            return JsonResponse({"error": "Tiempo inválido"}, status=400)
+
+        progreso, _ = PerfilContenido.objects.get_or_create(
+            perfil=perfil,
+            contenido=contenido,
+            defaults={
+                "segundos_vistos": 0,
+                "ultima_visualizacion": timezone.now(),
+            }
+        )
+
+        progreso.segundos_vistos = segundos
+        progreso.ultima_visualizacion = timezone.now()
+        progreso.save()
+
+        return JsonResponse({"guardado": True})

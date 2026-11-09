@@ -1068,6 +1068,11 @@
                         copy.append(description);
                     }
                     item.append(copy);
+                    const playLink = document.createElement('a');
+                    playLink.href = `/ver/${content.id}`;
+                    playLink.textContent = 'Reproducir';
+                    playLink.className = 'btn btn-netflix';
+                    item.append(playLink);
 
                     if (content.duracion) {
                         const duration = document.createElement('span');

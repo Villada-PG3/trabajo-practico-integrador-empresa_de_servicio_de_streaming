@@ -27,6 +27,12 @@ class RegistroForm(forms.Form):
         strip=False,
         widget=forms.PasswordInput,
     )
+    # queremos que se pida 2 veces la contraseña
+    password2 = forms.CharField(
+        label='Repetir Contraseña',
+        strip=False,
+        widget=forms.PasswordInput,
+    )
     telefono = PhoneNumberField(
         label='Teléfono (opcional)',
         required=False,
@@ -62,6 +68,10 @@ class RegistroForm(forms.Form):
         })
         self.fields['password'].widget.attrs.update({
             'placeholder': 'Crea tu contraseña',
+            'autocomplete': 'new-password',
+        })
+        self.fields['password2'].widget.attrs.update({
+            'placeholder': 'Repite la contraseña',
             'autocomplete': 'new-password',
         })
         self.fields['telefono'].widget.attrs['autocomplete'] = 'tel'
@@ -105,7 +115,19 @@ class RegistroForm(forms.Form):
             pais=data['pais'],
             idioma=data['idioma'],
         )
+    
+    def clean(self):
+        cleaned_data = super().clean()
+        password = cleaned_data.get('password')
+        password2 = cleaned_data.get('password2')
 
+        if password and password2 and password != password2:
+            self.add_error('password2', 'Las contraseñas no coinciden.')
+
+        return cleaned_data
+    
+    
+    
 
 class CuentaPreferenciasForm(forms.Form):
     pais = forms.ModelChoiceField(
@@ -304,18 +326,8 @@ class TarjetaDemoPlanForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['marca_tarjeta'].queryset = MarcaTarjeta.objects.filter(
-            nombre__in=(
-                'Visa',
-                'Mastercard',
-                'American Express',
-                'Discover',
-                'Diners Club',
-            ),
-        ).order_by('nombre')
-        self.fields['metodo_pago'].queryset = MetodoPago.objects.filter(
-            nombre__in=('Débito', 'Crédito'),
-        ).order_by('nombre')
+        self.fields['marca_tarjeta'].queryset = MarcaTarjeta.objects.all().order_by('nombre')
+        self.fields['metodo_pago'].queryset = MetodoPago.objects.all()
         for field in self.fields.values():
             field.widget.attrs['class'] = (
                 'form-control bg-secondary text-white border-0 py-2'
