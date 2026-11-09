@@ -1876,6 +1876,16 @@ class HomeCarouselesTests(TestCase):
             archivo_legacy=b'',
             archivo='videos/contenido-posterior.mp4',
         )
+        idioma_posterior_ingles = IdiomaContenido.objects.create(
+            idioma=ingles,
+            contenido=contenido_posterior,
+        )
+        video_posterior_ingles = CalidadIdiomaContenido.objects.create(
+            idioma_contenido=idioma_posterior_ingles,
+            calidad=calidad_hd,
+            archivo_legacy=b'',
+            archivo='videos/contenido-posterior-en.mp4',
+        )
         plan = Plan.objects.create(
             nombre='Plan HD',
             cantidad_pantallas_simultaneas=1,
@@ -1893,7 +1903,7 @@ class HomeCarouselesTests(TestCase):
             fecha_inscripcion=timezone.localdate(),
             fecha_vigencia=timezone.localdate(),
         )
-        self.autenticar_con_perfil(usuario)
+        perfil_activo = self.autenticar_con_perfil(usuario)
 
         with patch(
             'django.core.files.storage.FileSystemStorage.exists',
@@ -1906,7 +1916,7 @@ class HomeCarouselesTests(TestCase):
             )
             pagina_inicio_regreso = self.client.get(
                 reverse('home'),
-                {'titulo': titulo.pk},
+                {'detalle': titulo.pk},
             )
             self.assertContains(
                 pagina_inicio_regreso,
@@ -1914,8 +1924,14 @@ class HomeCarouselesTests(TestCase):
             )
             self.assertContains(
                 pagina_inicio_regreso,
-                'new URLSearchParams(window.location.search).get(\'titulo\')',
+                "parametrosInicio.get('detalle')",
             )
+            titulos_regreso = {
+                titulo_renderizado.pk
+                for carrusel in pagina_inicio_regreso.context['carruseles']
+                for titulo_renderizado in carrusel['titulos']
+            }
+            self.assertIn(titulo.pk, titulos_regreso)
             respuesta = self.client.get(
                 reverse('reproducir_titulo', args=[titulo.pk]),
             )
@@ -1966,9 +1982,122 @@ class HomeCarouselesTests(TestCase):
                 pagina_video_posterior.context['contenido'],
                 contenido_posterior,
             )
+            url_visualizacion_posterior = reverse(
+                'registrar_visualizacion',
+                args=[titulo.pk, contenido_posterior.pk, video_posterior.pk],
+            )
+            self.assertContains(pagina_video_posterior, url_visualizacion_posterior)
             self.assertContains(
                 pagina_video_posterior,
                 'videos/contenido-posterior.mp4',
+            )
+            ultima_visualizacion_esperada = timezone.now()
+            respuesta_visualizacion = self.client.post(
+                url_visualizacion_posterior,
+                {'segundos_vistos': 45},
+            )
+            self.assertEqual(respuesta_visualizacion.status_code, 200)
+            self.assertEqual(
+                respuesta_visualizacion.json()['segundos_vistos'],
+                45,
+            )
+            visualizacion_id = respuesta_visualizacion.json()['visualizacion_id']
+            respuesta_actualizacion = self.client.post(
+                url_visualizacion_posterior,
+                {
+                    'segundos_vistos': 30,
+                    'visualizacion_id': visualizacion_id,
+                },
+            )
+            self.assertEqual(respuesta_actualizacion.status_code, 200)
+            visualizaciones = PerfilContenido.objects.filter(
+                perfil=perfil_activo,
+                contenido=contenido_posterior,
+                video=video_posterior,
+            )
+            self.assertEqual(visualizaciones.count(), 1)
+            visualizacion = visualizaciones.get()
+            self.assertEqual(visualizacion.segundos_vistos, 30)
+            self.assertGreaterEqual(
+                visualizacion.ultima_visualizacion,
+                ultima_visualizacion_esperada,
+            )
+            pagina_reanudada = self.client.get(
+                reverse(
+                    'reproducir_video',
+                    args=[titulo.pk, video_posterior.pk],
+                ),
+            )
+            self.assertEqual(pagina_reanudada.status_code, 200)
+            self.assertEqual(pagina_reanudada.context['segundos_reanudacion'], 30)
+            self.assertContains(pagina_reanudada, 'data-resume-seconds="30"')
+            pagina_otro_video = self.client.get(
+                reverse(
+                    'reproducir_video',
+                    args=[titulo.pk, video_posterior_ingles.pk],
+                ),
+            )
+            self.assertEqual(pagina_otro_video.status_code, 200)
+            self.assertEqual(pagina_otro_video.context['segundos_reanudacion'], 30)
+            self.assertContains(pagina_otro_video, 'data-resume-seconds="30"')
+            url_visualizacion_otro_video = reverse(
+                'registrar_visualizacion',
+                args=[titulo.pk, contenido_posterior.pk, video_posterior_ingles.pk],
+            )
+            respuesta_visualizacion_otro_video = self.client.post(
+                url_visualizacion_otro_video,
+                {'segundos_vistos': 12},
+            )
+            self.assertEqual(
+                respuesta_visualizacion_otro_video.status_code,
+                200,
+            )
+            pagina_otro_video_reanudada = self.client.get(
+                reverse(
+                    'reproducir_video',
+                    args=[titulo.pk, video_posterior_ingles.pk],
+                ),
+            )
+            self.assertEqual(
+                pagina_otro_video_reanudada.context['segundos_reanudacion'],
+                12,
+            )
+            pagina_primera_variante = self.client.get(
+                reverse(
+                    'reproducir_video',
+                    args=[titulo.pk, video_posterior.pk],
+                ),
+            )
+            self.assertEqual(
+                pagina_primera_variante.context['segundos_reanudacion'],
+                12,
+            )
+            respuesta_posicion_invalida = self.client.post(
+                url_visualizacion_posterior,
+                {
+                    'segundos_vistos': 121,
+                    'visualizacion_id': visualizacion_id,
+                },
+            )
+            self.assertEqual(respuesta_posicion_invalida.status_code, 400)
+            visualizacion.refresh_from_db()
+            self.assertEqual(visualizacion.segundos_vistos, 30)
+            respuesta_nueva_sesion = self.client.post(
+                url_visualizacion_posterior,
+                {'segundos_vistos': 5},
+            )
+            self.assertEqual(respuesta_nueva_sesion.status_code, 200)
+            self.assertNotEqual(
+                respuesta_nueva_sesion.json()['visualizacion_id'],
+                visualizacion_id,
+            )
+            self.assertEqual(
+                PerfilContenido.objects.filter(
+                    perfil=perfil_activo,
+                    contenido=contenido_posterior,
+                    video=video_posterior,
+                ).count(),
+                2,
             )
 
             respuesta_reproduccion = self.client.post(
@@ -1995,7 +2124,7 @@ class HomeCarouselesTests(TestCase):
             self.assertNotContains(pagina_video, 'Elige idioma y calidad')
             self.assertContains(
                 pagina_video,
-                f'href="{reverse("home")}?titulo={titulo.pk}"',
+                f'href="{reverse("home")}?detalle={titulo.pk}"',
             )
             self.assertContains(pagina_video, 'Volver a Inicio')
             self.assertContains(pagina_video, 'data-video-backward')
@@ -2014,6 +2143,8 @@ class HomeCarouselesTests(TestCase):
             self.assertNotContains(pagina_video, '<footer')
             self.assertContains(pagina_video, 'data-captions-toggle')
             self.assertContains(pagina_video, 'data-captions-menu')
+            self.assertContains(pagina_video, 'data-fullscreen-toggle')
+            self.assertContains(pagina_video, 'bi-arrows-fullscreen')
             self.assertContains(pagina_video, 'Español')
             self.assertContains(pagina_video, 'English')
             self.assertContains(pagina_video, 'kind="subtitles"')
@@ -2425,6 +2556,7 @@ class HomeCarouselesTests(TestCase):
             [carrusel['etiqueta'] for carrusel in respuesta.context['carruseles']],
             [
                 'Más reproducidos',
+                'Seguir viendo',
                 'Mi Lista',
                 'Series',
                 'Películas',
@@ -3364,6 +3496,18 @@ class HomeCarouselesTests(TestCase):
         self.assertEqual(titulos, {resultado.pk})
         self.assertNotIn(otro.pk, titulos)
 
+        respuesta_detalle = self.client.get(
+            reverse('home'),
+            {'detalle': resultado.pk},
+        )
+        titulos_detalle = {
+            titulo.pk
+            for carrusel in respuesta_detalle.context['carruseles']
+            for titulo in carrusel['titulos']
+        }
+        self.assertIn(resultado.pk, titulos_detalle)
+        self.assertIn(otro.pk, titulos_detalle)
+
     def test_inicio_autenticado_sin_perfil_activo_no_muestra_titulos(self):
         usuario = Usuario.objects.create_user(
             username='sin-perfil-activo@example.com',
@@ -3450,7 +3594,7 @@ class HomeCarouselesTests(TestCase):
         self.assertEqual(titulo_en_carrusel.temporadas, 2)
         self.assertContains(respuesta, '|</span> 2 temporadas')
 
-    def test_mas_reproducidos_solo_cuenta_reproducciones_desde_el_diez_por_ciento(self):
+    def test_mas_reproducidos_solo_cuenta_reproducciones_desde_diez_segundos(self):
         mas_visto = self.crear_titulo('Título más visto', self.pelicula, con_contenido=True)
         menos_visto = self.crear_titulo('Título menos visto', self.serie, con_contenido=True)
         debajo_del_umbral = self.crear_titulo(
@@ -3480,7 +3624,7 @@ class HomeCarouselesTests(TestCase):
             PerfilContenido.objects.create(
                 perfil=perfil,
                 contenido=titulo.contenidos.get(),
-                segundos_vistos=100,
+                segundos_vistos=10 if indice < 2 else 9,
                 ultima_visualizacion=timezone.now(),
             )
 
@@ -3488,26 +3632,189 @@ class HomeCarouselesTests(TestCase):
         PerfilContenido.objects.create(
             perfil=perfil,
             contenido=menos_visto.contenidos.get(),
-            segundos_vistos=99,
+            segundos_vistos=10,
             ultima_visualizacion=timezone.now(),
         )
         PerfilContenido.objects.create(
             perfil=perfil,
             contenido=debajo_del_umbral.contenidos.get(),
-            segundos_vistos=99,
+            segundos_vistos=9,
             ultima_visualizacion=timezone.now(),
         )
         response = self.client.get(reverse('home'))
         carrusel_popular = response.context['carruseles'][0]
 
-        self.assertEqual(carrusel_popular['etiqueta'], 'Populares')
+        self.assertEqual(carrusel_popular['etiqueta'], 'Más reproducidos')
         self.assertEqual(
             [titulo.pk for titulo in carrusel_popular['titulos']],
             [mas_visto.pk, menos_visto.pk],
         )
 
+    def test_seguir_viendo_ordena_por_visualizacion_reciente_y_reanuda_contenido(self):
+        primero = self.crear_titulo(
+            'Contenido visto primero',
+            self.pelicula,
+            con_contenido=True,
+        )
+        segundo = self.crear_titulo(
+            'Contenido visto más reciente',
+            self.serie,
+            con_contenido=True,
+        )
+        terminado = self.crear_titulo(
+            'Contenido terminado',
+            self.pelicula,
+            con_contenido=True,
+        )
+        usuario = Usuario.objects.create_user(
+            username='seguir-viendo@example.com',
+            email='seguir-viendo@example.com',
+            password='UnaClave-larga-2026!',
+        )
+        perfil = self.autenticar_con_perfil(usuario)
+        ahora = timezone.now()
+        PerfilContenido.objects.create(
+            perfil=perfil,
+            contenido=primero.contenidos.get(),
+            segundos_vistos=120,
+            ultima_visualizacion=ahora - timedelta(minutes=5),
+        )
+        PerfilContenido.objects.create(
+            perfil=perfil,
+            contenido=segundo.contenidos.get(),
+            segundos_vistos=240,
+            ultima_visualizacion=ahora,
+        )
+        PerfilContenido.objects.create(
+            perfil=perfil,
+            contenido=terminado.contenidos.get(),
+            segundos_vistos=1000,
+            ultima_visualizacion=ahora + timedelta(minutes=1),
+        )
 
-    def test_visitante_solo_ve_top_diez_populares_con_numeracion(self):
+        respuesta = self.client.get(reverse('home'))
+        carruseles = respuesta.context['carruseles']
+        etiquetas = [carrusel['etiqueta'] for carrusel in carruseles]
+        continuar = carruseles[etiquetas.index('Seguir viendo')]
+
+        self.assertGreater(
+            etiquetas.index('Seguir viendo'),
+            etiquetas.index('Más reproducidos'),
+        )
+        self.assertEqual(
+            [titulo.pk for titulo in continuar['titulos']],
+            [segundo.pk, primero.pk],
+        )
+        self.assertEqual(
+            continuar['titulos'][0].url_seguir_viendo,
+            reverse(
+                'reproducir_contenido',
+                args=[segundo.pk, segundo.contenidos.get().pk],
+            ),
+        )
+        self.assertContains(respuesta, 'Seguir viendo')
+        self.assertContains(respuesta, 'class="title-carousel title-carousel--continue"')
+        self.assertContains(respuesta, '.title-carousel--continue .title-carousel-track')
+
+    def test_siguiente_episodio_avanza_en_temporada_y_luego_a_la_siguiente(self):
+        titulo = self.crear_titulo(
+            'Serie de reproducción continua',
+            self.serie,
+            con_contenido=False,
+        )
+        episodios = [
+            Contenido.objects.create(
+                nombre=f'Episodio {seccion}-{orden}',
+                descripcion='Episodio de prueba.',
+                seccion=seccion,
+                orden=orden,
+                duracion_segundos=100,
+                titulo=titulo,
+            )
+            for seccion, orden in ((1, 1), (1, 2), (2, 1))
+        ]
+        calidad = Calidad.objects.create(nombre='HD')
+        videos = []
+        for episodio in episodios:
+            idioma_contenido = IdiomaContenido.objects.create(
+                idioma=self.idioma,
+                contenido=episodio,
+            )
+            videos.append(
+                CalidadIdiomaContenido.objects.create(
+                    idioma_contenido=idioma_contenido,
+                    calidad=calidad,
+                    archivo_legacy=b'',
+                    archivo=f'videos/episodio-{episodio.pk}.mp4',
+                )
+            )
+        plan = Plan.objects.create(
+            nombre='Plan siguiente episodio',
+            cantidad_pantallas_simultaneas=1,
+        )
+        PlanCalidad.objects.create(plan=plan, calidad=calidad)
+        usuario = Usuario.objects.create_user(
+            username='siguiente-episodio@example.com',
+            email='siguiente-episodio@example.com',
+            password='UnaClave-larga-2026!',
+        )
+        Suscripcion.objects.create(
+            usuario=usuario,
+            plan=plan,
+            fecha_inscripcion=timezone.localdate(),
+            fecha_vigencia=timezone.localdate(),
+        )
+        self.autenticar_con_perfil(usuario)
+
+        with patch(
+            'django.core.files.storage.FileSystemStorage.exists',
+            return_value=True,
+        ):
+            respuesta = self.client.get(
+                reverse(
+                    'siguiente_episodio',
+                    args=[titulo.pk, episodios[0].pk, videos[0].pk],
+                ),
+            )
+            self.assertEqual(
+                respuesta.json()['url'],
+                reverse('reproducir_video', args=[titulo.pk, videos[1].pk]),
+            )
+            pagina_episodio = self.client.get(
+                reverse('reproducir_video', args=[titulo.pk, videos[0].pk]),
+            )
+            self.assertEqual(pagina_episodio.status_code, 200)
+            self.assertContains(
+                pagina_episodio,
+                (
+                    'data-next-episode-url="'
+                    f'{reverse("siguiente_episodio", args=[titulo.pk, episodios[0].pk, videos[0].pk])}"'
+                ),
+            )
+            self.assertContains(
+                pagina_episodio,
+                "video.addEventListener('ended', async () =>",
+            )
+            respuesta_siguiente_temporada = self.client.get(
+                reverse(
+                    'siguiente_episodio',
+                    args=[titulo.pk, episodios[1].pk, videos[1].pk],
+                ),
+            )
+            self.assertEqual(
+                respuesta_siguiente_temporada.json()['url'],
+                reverse('reproducir_video', args=[titulo.pk, videos[2].pk]),
+            )
+            respuesta_final = self.client.get(
+                reverse(
+                    'siguiente_episodio',
+                    args=[titulo.pk, episodios[2].pk, videos[2].pk],
+                ),
+            )
+            self.assertIsNone(respuesta_final.json()['url'])
+
+
+    def test_visitante_ve_carrusel_top_diez_mas_reproducidos_sin_enlaces(self):
         usuario = Usuario.objects.create_user(
             username='reproducciones@example.com',
             email='reproducciones@example.com',
@@ -3544,22 +3851,21 @@ class HomeCarouselesTests(TestCase):
         carruseles = respuesta.context['carruseles']
 
         self.assertEqual(len(carruseles), 1)
-        self.assertEqual(carruseles[0]['etiqueta'], 'Populares')
+        self.assertEqual(carruseles[0]['etiqueta'], 'Más reproducidos')
         self.assertTrue(carruseles[0]['mostrar_top'])
         self.assertEqual(len(carruseles[0]['titulos']), 10)
         self.assertEqual(carruseles[0]['titulos'][0].pk, primer_titulo.pk)
         self.assertContains(respuesta, 'aria-label="Puesto 1"')
         self.assertContains(respuesta, 'aria-label="Puesto 10"')
-        self.assertContains(respuesta, 'id="popular-list-title">Populares</h2>')
-        self.assertContains(respuesta, 'class="popular-grid"')
+        self.assertContains(respuesta, 'id="carousel-title-1">Más reproducidos</h2>')
+        self.assertContains(respuesta, 'class="title-carousel"')
         self.assertNotContains(respuesta, 'class="title-poster-play-link"')
         self.assertNotContains(respuesta, 'class="featured-banner-play-link"')
         self.assertNotContains(
             respuesta,
             reverse('reproducir_titulo', args=[primer_titulo.pk]),
         )
-        self.assertNotContains(respuesta, 'class="title-carousel"')
-        self.assertNotContains(respuesta, 'data-carousel-target="carousel-track')
+        self.assertContains(respuesta, 'data-carousel-target="carousel-track-1"')
 
     def test_usuario_autenticado_ve_banners_recientes_con_descripcion_y_elenco(self):
         anterior = self.crear_titulo(
@@ -4199,6 +4505,15 @@ class CargarDatosDemoTests(TestCase):
         )
         self.assertEqual(contenido_ingles.nombre, 'Test Route - Main Feature')
         self.assertIn('demonstration content', contenido_ingles.descripcion)
+        serie_demo = Titulo.objects.get(nombre_original='Misterios de muestra')
+        episodios_con_video_base = CalidadIdiomaContenido.objects.filter(
+            idioma_contenido__contenido__titulo=serie_demo,
+            idioma_contenido__contenido__nombre__contains=' - T',
+            idioma_contenido__idioma__nombre='Español',
+            calidad__nombre='HD',
+            archivo='videos/hd.mp4',
+        )
+        self.assertEqual(episodios_con_video_base.count(), 4)
         self.assertTrue(Imagen.objects.filter(nombre='Avatar Dorado').exists())
         self.assertTrue(
             IdiomaTitulo.objects.filter(imagen__startswith='demo/banners/').exists()
@@ -4214,6 +4529,7 @@ class CargarDatosDemoTests(TestCase):
                 IdiomaContenido,
                 Titulo,
                 Suscripcion,
+                CalidadIdiomaContenido,
             )
         }
         call_command('cargar_datos_demo', stdout=StringIO())
@@ -4227,6 +4543,7 @@ class CargarDatosDemoTests(TestCase):
                 IdiomaContenido,
                 Titulo,
                 Suscripcion,
+                CalidadIdiomaContenido,
             )
         }
 
