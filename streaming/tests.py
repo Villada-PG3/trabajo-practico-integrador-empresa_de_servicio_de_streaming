@@ -2143,6 +2143,8 @@ class HomeCarouselesTests(TestCase):
             self.assertNotContains(pagina_video, '<footer')
             self.assertContains(pagina_video, 'data-captions-toggle')
             self.assertContains(pagina_video, 'data-captions-menu')
+            self.assertContains(pagina_video, 'data-fullscreen-toggle')
+            self.assertContains(pagina_video, 'bi-arrows-fullscreen')
             self.assertContains(pagina_video, 'Español')
             self.assertContains(pagina_video, 'English')
             self.assertContains(pagina_video, 'kind="subtitles"')

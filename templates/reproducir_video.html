@@ -10,6 +10,16 @@
         background: #000;
     }
 
+    .video-player:fullscreen {
+        width: 100vw;
+        height: 100vh;
+        aspect-ratio: auto;
+    }
+
+    .video-player:fullscreen::before {
+        display: none;
+    }
+
     .video-player > video {
         width: 100%;
         height: 100%;
@@ -263,6 +273,11 @@
                         {% endfor %}
                     </div>
                 </div>
+                <button class="video-control-button" type="button"
+                        aria-label="Pantalla completa" title="Pantalla completa"
+                        aria-pressed="false" data-fullscreen-toggle>
+                    <i class="bi bi-arrows-fullscreen" aria-hidden="true"></i>
+                </button>
             </div>
         </div>
     </div>
@@ -282,6 +297,7 @@
         const volume = player.querySelector('[data-video-volume]');
         const captionsToggle = player.querySelector('[data-captions-toggle]');
         const captionsMenu = player.querySelector('[data-captions-menu]');
+        const fullscreenToggle = player.querySelector('[data-fullscreen-toggle]');
         const subtitleTracks = [...video.querySelectorAll('track[data-subtitle-track]')];
         const seek = player.querySelector('[data-video-seek]');
         const currentTime = player.querySelector('[data-current-time]');
@@ -338,6 +354,21 @@
                 `bi ${muted ? 'bi-volume-mute-fill' : 'bi-volume-up-fill'}`;
             muteButton.setAttribute('aria-label', muted ? 'Activar sonido' : 'Silenciar');
             muteButton.title = muted ? 'Activar sonido' : 'Silenciar';
+        };
+        const updateFullscreenButton = () => {
+            const isFullscreen = document.fullscreenElement === player;
+            const icon = fullscreenToggle.querySelector('i');
+            icon.className = `bi ${
+                isFullscreen ? 'bi-fullscreen-exit' : 'bi-arrows-fullscreen'
+            }`;
+            fullscreenToggle.setAttribute('aria-pressed', String(isFullscreen));
+            fullscreenToggle.setAttribute(
+                'aria-label',
+                isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa',
+            );
+            fullscreenToggle.title = isFullscreen
+                ? 'Salir de pantalla completa'
+                : 'Pantalla completa';
         };
         const progressBody = () => {
             const body = new URLSearchParams({
@@ -452,6 +483,23 @@
             }
             updateMuteButton();
         });
+        fullscreenToggle.addEventListener('click', async () => {
+            try {
+                if (document.fullscreenElement === player) {
+                    await document.exitFullscreen();
+                } else if (player.requestFullscreen) {
+                    await player.requestFullscreen();
+                } else {
+                    progressStatus.textContent =
+                        'La pantalla completa no está disponible en este navegador.';
+                }
+            } catch {
+                progressStatus.textContent =
+                    'No se pudo cambiar el modo de pantalla completa.';
+            }
+            showControls();
+        });
+        document.addEventListener('fullscreenchange', updateFullscreenButton);
         captionsToggle.addEventListener('click', () => {
             const opening = captionsMenu.hidden;
             captionsMenu.hidden = !opening;
@@ -566,6 +614,7 @@
         updateProgress();
         updatePlayButton();
         updateMuteButton();
+        updateFullscreenButton();
         showControls();
     })();
 </script>
