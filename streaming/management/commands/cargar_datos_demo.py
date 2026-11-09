@@ -170,6 +170,18 @@ class Command(BaseCommand):
         )
         rol_actor, _ = RolElenco.objects.get_or_create(rol=actor, elenco=elenco)
         rol_director, _ = RolElenco.objects.get_or_create(rol=director, elenco=elenco)
+        calidad_240p, _ = Calidad.objects.get_or_create(
+            nombre='240p',
+            defaults={'descripcion': '240p'},
+        )
+        calidad_480p, _ = Calidad.objects.get_or_create(
+            nombre='480p',
+            defaults={'descripcion': '480p'},
+        )
+        calidad_720p, _ = Calidad.objects.get_or_create(
+            nombre='720p',
+            defaults={'descripcion': '720p'},
+        )
         calidad_hd, _ = Calidad.objects.get_or_create(
             nombre='HD',
             defaults={'descripcion': 'Alta definición de prueba'},
@@ -451,7 +463,7 @@ class Command(BaseCommand):
             if campos_idioma_contenido:
                 idioma_contenido.save(update_fields=campos_idioma_contenido)
             if traduccion_titulo:
-                IdiomaContenido.objects.update_or_create(
+                ingles_ic, _ = IdiomaContenido.objects.update_or_create(
                     idioma=ingles,
                     contenido=contenido,
                     defaults={
@@ -462,22 +474,25 @@ class Command(BaseCommand):
                         ),
                     },
                 )
-            for calidad in (calidad_hd, calidad_full_hd):
-                CalidadIdiomaContenido.objects.get_or_create(
-                    idioma_contenido=idioma_contenido,
-                    calidad=calidad,
-                    defaults={'archivo': b'archivo de video ficticio'},
-                )
-            Subtitulo.objects.get_or_create(
+            for idioma_ic, idioma_slug in ((idioma_contenido, 'espanol'), (ingles_ic, 'ingles')):
+                # subtituos
+                Subtitulo.objects.get_or_create(
                 contenido=contenido,
-                idioma=espanol,
-                defaults={
-                    'archivo_vtt': (
-                        b'WEBVTT\n\n00:00:01.000 --> 00:00:03.000\n'
-                        b'Subtitulos ficticios de demostracion.\n'
-                    ),
-                },
-            )
+                idioma=idioma_ic.idioma,
+                archivo_vtt=f'/media/subtitulo/titulo1/contenido1/{idioma_slug}.vtt')
+                # calidadidiomacontenidos
+                for calidad, calidad_slug in (
+                    (calidad_480p, '480p'),
+                    (calidad_720p, '720p'),
+                    (calidad_hd, 'hd'),
+                    (calidad_full_hd, 'full_hd'),
+                ):
+                    CalidadIdiomaContenido.objects.get_or_create(
+                        idioma_contenido=idioma_ic,
+                        calidad=calidad,
+                        archivo=f'/media/video/titulo1/contenido1/{idioma_slug}/{calidad_slug}.mp4',
+                    )
+            
             for temporada in range(1, temporadas + 1):
                 for episodio in range(1, 3):
                     episodio_demo, _ = Contenido.objects.get_or_create(
@@ -516,30 +531,47 @@ class Command(BaseCommand):
                 'cantidad_pantallas_simultaneas': 1,
             },
         )
-        plan_familiar, _ = Plan.objects.get_or_create(
-            nombre='Plan Demo Familiar',
+        plan_estandar, _ = Plan.objects.get_or_create(
+            nombre='Plan Demo Estandar',
+            defaults={
+                'descripcion': 'Plan de prueba, no representa una oferta real.',
+                'cantidad_pantallas_simultaneas': 2,
+            },
+        )
+        plan_premium, _ = Plan.objects.get_or_create(
+            nombre='Plan Demo Premium',
             defaults={
                 'descripcion': 'Plan de prueba, no representa una oferta real.',
                 'cantidad_pantallas_simultaneas': 4,
             },
         )
-        for plan, calidad in (
-            (plan_basico, calidad_hd),
-            (plan_familiar, calidad_hd),
-            (plan_familiar, calidad_full_hd),
-        ):
-            PlanCalidad.objects.get_or_create(plan=plan, calidad=calidad)
+        # Plan básico: hasta 720p
+        for calidad in (calidad_240p, calidad_480p, calidad_720p):
+            PlanCalidad.objects.get_or_create(plan=plan_basico, calidad=calidad)
+
+        # Plan estándar: hasta HD
+        for calidad in (calidad_240p, calidad_480p, calidad_720p, calidad_hd):
+            PlanCalidad.objects.get_or_create(plan=plan_estandar, calidad=calidad)
+
+        # Plan premium: hasta Full HD
+        for calidad in (calidad_240p, calidad_480p, calidad_720p, calidad_hd, calidad_full_hd):
+            PlanCalidad.objects.get_or_create(plan=plan_premium, calidad=calidad)
+            
         precio_basico, _ = Precio.objects.get_or_create(
             plan=plan_basico,
             fecha_inicio=hoy,
             defaults={'precio': 4.99},
         )
         Precio.objects.get_or_create(
-            plan=plan_familiar,
+            plan=plan_estandar,
             fecha_inicio=hoy,
             defaults={'precio': 8.99},
         )
-
+        Precio.objects.get_or_create(
+            plan=plan_premium,
+            fecha_inicio=hoy,
+            defaults={'precio': 14.99},
+        )
         usuario, creado = Usuario.objects.get_or_create(
             username='demo@ejemplo.test',
             defaults={
@@ -566,14 +598,39 @@ class Command(BaseCommand):
             defaults={'descripcion': 'Estado ficticio para una prueba local.'},
         )
         marca, _ = MarcaTarjeta.objects.get_or_create(
-            nombre='Tarjeta Demo',
+            nombre='Visa',
+            defaults={
+                'numero_asignado': 0,
+                'descripcion': 'Marca ficticia; no usar para pagos.',
+            },
+        )
+        marca, _ = MarcaTarjeta.objects.get_or_create(
+            nombre='Mastercard',
+            defaults={
+                'numero_asignado': 0,
+                'descripcion': 'Marca ficticia; no usar para pagos.',
+            },
+        )
+        marca, _ = MarcaTarjeta.objects.get_or_create(
+            nombre='American Express',
+            defaults={
+                'numero_asignado': 0,
+                'descripcion': 'Marca ficticia; no usar para pagos.',
+            },
+        )
+        marca, _ = MarcaTarjeta.objects.get_or_create(
+            nombre='Cabal',
             defaults={
                 'numero_asignado': 0,
                 'descripcion': 'Marca ficticia; no usar para pagos.',
             },
         )
         metodo_pago, _ = MetodoPago.objects.get_or_create(
-            nombre='Pago de prueba',
+            nombre='Crédito',
+            defaults={'descripcion': 'Método ficticio para datos locales.'},
+        )
+        metodo_pago, _ = MetodoPago.objects.get_or_create(
+            nombre='Débito',
             defaults={'descripcion': 'Método ficticio para datos locales.'},
         )
         tarjeta, _ = Tarjeta.objects.get_or_create(
@@ -609,6 +666,30 @@ class Command(BaseCommand):
             nombre='Avatar Dorado',
             defaults={
                 'imagen': 'demo/perfiles/avatar-dorado.svg',
+            },
+        )
+        imagen_avatar, _ = Imagen.objects.get_or_create(
+            nombre='Avatar Azul',
+            defaults={
+                'imagen': 'demo/perfiles/avatar-azul.svg',
+            },
+        )
+        imagen_avatar, _ = Imagen.objects.get_or_create(
+            nombre='Avatar Coral',
+            defaults={
+                'imagen': 'demo/perfiles/avatar-coral.svg',
+            },
+        )
+        imagen_avatar, _ = Imagen.objects.get_or_create(
+            nombre='Avatar Verde',
+            defaults={
+                'imagen': 'demo/perfiles/avatar-verde.svg',
+            },
+        )
+        imagen_avatar, _ = Imagen.objects.get_or_create(
+            nombre='Avatar Violeta',
+            defaults={
+                'imagen': 'demo/perfiles/avatar-violeta.svg',
             },
         )
         if imagen_avatar.imagen.name != 'demo/perfiles/avatar-dorado.svg':

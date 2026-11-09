@@ -1,44 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.forms import UserChangeForm, UserCreationForm
-
-from .models import (
-    Calidad,
-    CalidadIdiomaContenido,
-    Calificacion,
-    Categoria,
-    Cobro,
-    Contenido,
-    Elenco,
-    EstadoCobro,
-    Idioma,
-    IdiomaContenido,
-    IdiomaTitulo,
-    Imagen,
-    MarcaTarjeta,
-    MetodoPago,
-    Pais,
-    Perfil,
-    PerfilContenido,
-    PerfilTitulo,
-    Plan,
-    PlanCalidad,
-    Precio,
-    Porver,
-    Registro,
-    Rol,
-    RolElenco,
-    Subtitulo,
-    Suscripcion,
-    Tarjeta,
-    TipoPerfil,
-    TipoTitulo,
-    Titulo,
-    TituloCategoria,
-    TituloRolElenco,
-    Usuario,
-)
-
+from .models import *
 
 class UsuarioCreationForm(UserCreationForm):
     class Meta(UserCreationForm.Meta):
