@@ -590,7 +590,8 @@
                                 </button>
                                 <ul class="dropdown-menu dropdown-menu-end dropdown-menu-dark">
                                     <li><a class="dropdown-item" href="{% url 'perfiles' %}">Cambiar Perfil</a></li>
-                                    <li><a class="dropdown-item" href="#">Cuenta</a></li>
+                                    <li><a class="dropdown-item{% if pagina_cuenta %} active{% endif %}"
+                                           href="{% url 'cuenta' %}">Cuenta</a></li>
                                     <li><a class="dropdown-item{% if pagina_estadisticas %} active{% endif %}"
                                            href="{% url 'reporte_ventas' %}">
                                         <i class="bi bi-graph-up-arrow me-2" aria-hidden="true"></i>Estadísticas
@@ -668,14 +669,14 @@
                     <ul class="list-unstyled">
                         <li class="mb-2"><a href="#">Centro de ayuda</a></li>
                         <li class="mb-2"><a href="#">Empleo</a></li>
-                        <li class="mb-2"><a href="#">Términos de uso</a></li>
+                        <li class="mb-2"><a href="{% url 'cuenta' %}?seccion=mas-info">Términos de uso</a></li>
                     </ul>
                 </div>
                 <div class="col-6 col-md-3">
                     <ul class="list-unstyled">
-                        <li class="mb-2"><a href="#">Cuenta</a></li>
+                        <li class="mb-2"><a href="{% url 'cuenta' %}">Cuenta</a></li>
                         <li class="mb-2"><a href="#">Canjear tarjetas</a></li>
-                        <li class="mb-2"><a href="#">Privacidad</a></li>
+                        <li class="mb-2"><a href="{% url 'cuenta' %}?seccion=mas-info">Privacidad</a></li>
                     </ul>
                 </div>
                 <div class="col-6 col-md-3">

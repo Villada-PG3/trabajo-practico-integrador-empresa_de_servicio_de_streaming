@@ -1,0 +1,271 @@
+{% extends "base.html" %}
+
+{% block title %}Cuenta - RedFlix{% endblock %}
+
+{% block extra_css %}
+<style>
+    .account-layout {
+        display: grid;
+        grid-template-columns: minmax(12rem, 0.3fr) minmax(0, 1fr);
+        gap: 1.5rem;
+        max-width: 1100px;
+        margin: 0 auto;
+    }
+
+    .account-navigation {
+        align-self: start;
+    }
+
+    .account-option {
+        display: block;
+        padding: 0.8rem 1rem;
+        border-left: 3px solid transparent;
+        color: rgba(255, 255, 255, 0.72);
+        text-decoration: none;
+    }
+
+    .account-option:hover,
+    .account-option.is-active {
+        border-left-color: #e50914;
+        background: rgba(255, 255, 255, 0.07);
+        color: #fff;
+    }
+
+    .account-data-row {
+        display: grid;
+        grid-template-columns: minmax(10rem, 0.45fr) minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 1rem;
+        padding: 1rem 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    }
+
+    .account-data-label {
+        color: rgba(255, 255, 255, 0.62);
+    }
+
+    .account-data-value {
+        overflow-wrap: anywhere;
+        color: var(--bs-info);
+    }
+
+    .account-subscription-value {
+        color: var(--bs-info);
+    }
+
+    .account-legal h3 {
+        margin-top: 1.75rem;
+        font-size: 1.1rem;
+    }
+
+    @media (max-width: 767.98px) {
+        .account-layout {
+            grid-template-columns: 1fr;
+        }
+
+        .account-navigation {
+            display: flex;
+            overflow-x: auto;
+            padding-bottom: 0.25rem;
+        }
+
+        .account-option {
+            flex: 0 0 auto;
+            border-left: 0;
+            border-bottom: 3px solid transparent;
+        }
+
+        .account-option:hover,
+        .account-option.is-active {
+            border-bottom-color: #e50914;
+            border-left-color: transparent;
+        }
+
+        .account-data-row {
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 0.4rem 1rem;
+        }
+
+        .account-data-label {
+            grid-column: 1;
+        }
+
+        .account-data-value {
+            grid-column: 1;
+        }
+
+        .account-data-row .btn {
+            grid-column: 2;
+            grid-row: 1 / span 2;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="container py-5">
+    <header class="mb-4">
+        <h1 class="h2 fw-bold mb-1">Cuenta</h1>
+        <p class="text-white-50 mb-0">Administra tus datos, suscripción y preferencias.</p>
+    </header>
+
+    <div class="account-layout">
+        <nav class="account-navigation flex-column" aria-label="Opciones de cuenta">
+            <a class="account-option{% if seccion_cuenta == 'usuario' %} is-active{% endif %}"
+               href="{% url 'cuenta' %}?seccion=usuario"
+               {% if seccion_cuenta == 'usuario' %}aria-current="page"{% endif %}>Usuario</a>
+            <a class="account-option{% if seccion_cuenta == 'suscripcion' %} is-active{% endif %}"
+               href="{% url 'cuenta' %}?seccion=suscripcion"
+               {% if seccion_cuenta == 'suscripcion' %}aria-current="page"{% endif %}>Suscripción</a>
+            <a class="account-option{% if seccion_cuenta == 'mas-info' %} is-active{% endif %}"
+               href="{% url 'cuenta' %}?seccion=mas-info"
+               {% if seccion_cuenta == 'mas-info' %}aria-current="page"{% endif %}>Más info</a>
+        </nav>
+
+        <div class="card bg-dark border-secondary p-3 p-md-4">
+            {% if seccion_cuenta == 'usuario' %}
+                <section aria-labelledby="account-user-heading">
+                    <h2 class="h4 fw-semibold mb-3" id="account-user-heading">Usuario</h2>
+                    <div class="account-data-row">
+                        <span class="account-data-label">Nombre de usuario</span>
+                        <span class="account-data-value">{{ request.user.username }}</span>
+                        <a class="btn btn-outline-light btn-sm"
+                           href="{% url 'editar_dato_cuenta' 'username' %}">Editar</a>
+                    </div>
+                    <div class="account-data-row">
+                        <span class="account-data-label">Perfiles activos</span>
+                        <span class="account-data-value">{{ perfiles_activos }}</span>
+                        <span></span>
+                    </div>
+                    <div class="account-data-row">
+                        <span class="account-data-label">Sesiones abiertas</span>
+                        <span class="account-data-value">{{ sesiones_abiertas }}</span>
+                        <form method="post" action="{% url 'cerrar_otras_sesiones' %}">
+                            {% csrf_token %}
+                            <button class="btn btn-danger btn-sm" type="submit">Cerrar todas</button>
+                        </form>
+                    </div>
+                    <div class="account-data-row">
+                        <span class="account-data-label">Contraseña</span>
+                        <span class="account-data-value" aria-label="Contraseña oculta">••••••••</span>
+                        <a class="btn btn-outline-light btn-sm"
+                           href="{% url 'editar_dato_cuenta' 'password' %}">Editar</a>
+                    </div>
+                    <div class="account-data-row">
+                        <span class="account-data-label">Correo electrónico</span>
+                        <span class="account-data-value">{{ request.user.email|default:"No asignado" }}</span>
+                        <a class="btn btn-outline-light btn-sm"
+                           href="{% url 'editar_dato_cuenta' 'email' %}">Editar</a>
+                    </div>
+                    <div class="account-data-row">
+                        <span class="account-data-label">Teléfono</span>
+                        <span class="account-data-value">{{ request.user.telefono|default:"No asignado" }}</span>
+                        <a class="btn btn-outline-light btn-sm"
+                           href="{% url 'editar_dato_cuenta' 'telefono' %}">Editar</a>
+                    </div>
+
+                    <form method="post" class="mt-4">
+                        {% csrf_token %}
+                        <h3 class="h6 fw-semibold mb-3">Preferencias de la cuenta</h3>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label" for="{{ form.pais.id_for_label }}">País</label>
+                                {{ form.pais }}
+                                {% for error in form.pais.errors %}
+                                    <div class="small text-danger mt-1">{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="{{ form.idioma.id_for_label }}">Idioma de preferencia</label>
+                                {{ form.idioma }}
+                                {% for error in form.idioma.errors %}
+                                    <div class="small text-danger mt-1">{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        <div class="text-end mt-3">
+                            <button type="submit" class="btn btn-netflix">Guardar preferencias</button>
+                        </div>
+                    </form>
+                </section>
+            {% elif seccion_cuenta == 'suscripcion' %}
+                <section aria-labelledby="account-subscription-heading">
+                    <h2 class="h4 fw-semibold mb-3" id="account-subscription-heading">Suscripción</h2>
+                    {% if suscripcion %}
+                        <dl class="row mb-0">
+                            <dt class="col-sm-5 text-white-50">Plan</dt>
+                            <dd class="col-sm-7 account-subscription-value">{{ suscripcion.plan.nombre }}</dd>
+
+                            <dt class="col-sm-5 text-white-50">Precio actual</dt>
+                            <dd class="col-sm-7 account-subscription-value">
+                                {% if precio_actual %}${{ precio_actual.precio|floatformat:2 }}{% else %}No disponible{% endif %}
+                            </dd>
+
+                            <dt class="col-sm-5 text-white-50">Calidades incluidas</dt>
+                            <dd class="col-sm-7 account-subscription-value">
+                                {% for plan_calidad in calidades %}
+                                    {% if not forloop.first %}, {% endif %}{{ plan_calidad.calidad.nombre }}
+                                {% empty %}
+                                    No hay calidades registradas.
+                                {% endfor %}
+                            </dd>
+
+                            <dt class="col-sm-5 text-white-50">Dispositivos simultáneos</dt>
+                            <dd class="col-sm-7 account-subscription-value">{{ suscripcion.plan.cantidad_pantallas_simultaneas }}</dd>
+
+                            <dt class="col-sm-5 text-white-50">Fecha de inscripción</dt>
+                            <dd class="col-sm-7 account-subscription-value">{{ suscripcion.fecha_inscripcion|date:"d/m/Y" }}</dd>
+
+                            <dt class="col-sm-5 text-white-50">Fecha de vigencia</dt>
+                            <dd class="col-sm-7 account-subscription-value">{{ suscripcion.fecha_vigencia|date:"d/m/Y"|default:"No asignada" }}</dd>
+
+                            <dt class="col-sm-5 text-white-50">Próximo Cobro</dt>
+                            <dd class="col-sm-7 account-subscription-value">{{ proximo_cobro|date:"d/m/Y"|default:"No asignado" }}</dd>
+
+                            <dt class="col-sm-5 text-white-50">Tarjeta asociada</dt>
+                            <dd class="col-sm-7 account-subscription-value">
+                                {% if ultimo_cobro %}
+                                    {{ ultimo_cobro.tarjeta.marca_tarjeta.nombre }} terminada en {{ ultimo_cobro.tarjeta.numero|slice:"-4:" }}
+                                {% else %}
+                                    No hay cobros registrados.
+                                {% endif %}
+                            </dd>
+                        </dl>
+                    {% else %}
+                        <p class="text-white-50 mb-0">Esta cuenta no tiene suscripciones registradas.</p>
+                    {% endif %}
+                </section>
+            {% else %}
+                <section class="account-legal" aria-labelledby="account-legal-heading">
+                    <h2 class="h4 fw-semibold mb-2" id="account-legal-heading">Más información</h2>
+                    <div class="alert alert-warning small">
+                        Texto informativo inicial. Debe ser revisado y aprobado legalmente antes de publicarse como política oficial.
+                    </div>
+
+                    <h3>Términos de uso</h3>
+                    <p>RedFlix permite acceder a un catálogo de entretenimiento sujeto a la disponibilidad del servicio, del título y de la suscripción vigente. La persona titular de la cuenta es responsable de mantener actualizados sus datos y proteger sus credenciales.</p>
+                    <p>El acceso es personal y debe utilizarse de acuerdo con el plan contratado y las leyes aplicables. No se permite intentar interrumpir, alterar o acceder sin autorización a la plataforma, sus cuentas o sus contenidos.</p>
+
+                    <h3>Suscripciones, precios y pagos</h3>
+                    <p>El plan asociado, sus calidades y su precio se informan en la sección Suscripción. Los precios y condiciones pueden cambiar; cualquier modificación debe comunicarse conforme a la normativa aplicable. La vigencia y disponibilidad dependen del estado de la suscripción y de los pagos correspondientes.</p>
+
+                    <h3>Perfiles y contenidos</h3>
+                    <p>La cuenta puede incluir perfiles con preferencias y restricciones de edad propias. La persona titular debe supervisar el uso de los perfiles y seleccionar clasificaciones apropiadas. La disponibilidad de títulos, idiomas, subtítulos y calidades puede variar.</p>
+
+                    <h3>Privacidad y datos personales</h3>
+                    <p>Los datos de cuenta se utilizan para administrar el acceso, las preferencias, los perfiles, la suscripción y la seguridad del servicio. La contraseña se almacena mediante mecanismos de protección y no se muestra en texto legible. Las solicitudes de acceso, rectificación o eliminación deben gestionarse de acuerdo con la legislación aplicable.</p>
+
+                    <h3>Seguridad y sesiones</h3>
+                    <p>La persona usuaria debe informar cualquier uso no autorizado y mantener sus credenciales confidenciales. El contador de sesiones de esta pantalla se basa en los registros de dispositivos marcados como activos y puede no representar todas las sesiones autenticadas en tiempo real.</p>
+
+                    <h3>Disponibilidad y cambios</h3>
+                    <p>La plataforma puede requerir mantenimiento o experimentar interrupciones. Las funciones, interfaces y contenidos pueden modificarse para mantener y mejorar el servicio, sin perjuicio de los derechos que otorgue la normativa vigente.</p>
+
+                    <h3>Contacto</h3>
+                    <p class="mb-0">Para consultas sobre la cuenta, la suscripción o los datos personales, utiliza los canales de contacto oficiales que RedFlix habilite para tu región.</p>
+                </section>
+            {% endif %}
+        </div>
+    </div>
+</section>
+{% endblock %}

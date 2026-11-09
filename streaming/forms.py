@@ -53,7 +53,10 @@ class RegistroForm(forms.Form):
 
     def clean_email(self):
         email = self.cleaned_data['email'].strip().lower()
-        if Usuario.objects.filter(username__iexact=email).exists():
+        if (
+            Usuario.objects.filter(email__iexact=email).exists()
+            or Usuario.objects.filter(username__iexact=email).exists()
+        ):
             raise forms.ValidationError('Ya existe una cuenta asociada a este correo.')
         return email
 
@@ -80,6 +83,159 @@ class RegistroForm(forms.Form):
             pais=data['pais'],
             idioma=data['idioma'],
         )
+
+
+class CuentaPreferenciasForm(forms.Form):
+    pais = forms.ModelChoiceField(
+        label='País',
+        queryset=Pais.objects.order_by('nombre'),
+        empty_label='Selecciona tu país',
+        required=False,
+    )
+    idioma = forms.ModelChoiceField(
+        label='Idioma',
+        queryset=Idioma.objects.order_by('nombre'),
+        empty_label='Selecciona tu idioma',
+        required=False,
+    )
+
+    def __init__(self, *args, usuario, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.usuario = usuario
+        self.initial.update({
+            'pais': usuario.pais_id,
+            'idioma': usuario.idioma_id,
+        })
+        self.fields['pais'].widget.attrs['class'] = (
+            'form-select bg-secondary text-white border-0 py-2'
+        )
+        self.fields['idioma'].widget.attrs['class'] = (
+            'form-select bg-secondary text-white border-0 py-2'
+        )
+
+    def save(self):
+        if not self.is_valid():
+            raise ValueError('No se pueden guardar preferencias inválidas.')
+        self.usuario.pais = self.cleaned_data['pais']
+        self.usuario.idioma = self.cleaned_data['idioma']
+        self.usuario.save(update_fields=['pais', 'idioma'])
+        return self.usuario
+
+
+class EditarCuentaForm(forms.Form):
+    CAMPOS = {
+        'username': 'Nombre de usuario',
+        'email': 'Correo electrónico',
+        'telefono': 'Teléfono',
+        'password': 'Contraseña',
+    }
+
+    def __init__(self, *args, usuario, campo, **kwargs):
+        super().__init__(*args, **kwargs)
+        if campo not in self.CAMPOS:
+            raise ValueError('El dato de cuenta solicitado no es editable.')
+        self.usuario = usuario
+        self.campo = campo
+        if campo == 'username':
+            modelo = Usuario._meta.get_field('username')
+            self.fields[campo] = forms.CharField(
+                label=self.CAMPOS[campo],
+                max_length=modelo.max_length,
+                validators=modelo.validators,
+                initial=usuario.username,
+            )
+        elif campo == 'email':
+            self.fields[campo] = forms.EmailField(
+                label=self.CAMPOS[campo],
+                max_length=254,
+                initial=usuario.email,
+                widget=forms.EmailInput(attrs={'autocomplete': 'email'}),
+            )
+        elif campo == 'telefono':
+            self.fields[campo] = PhoneNumberField(
+                label=self.CAMPOS[campo],
+                required=False,
+                initial=usuario.telefono,
+                widget=forms.TextInput(attrs={
+                    'placeholder': '+54 9 11 1234-5678',
+                    'autocomplete': 'tel',
+                }),
+            )
+        else:
+            self.fields['current_password'] = forms.CharField(
+                label='Contraseña vigente',
+                strip=False,
+                widget=forms.PasswordInput(attrs={
+                    'autocomplete': 'current-password',
+                }),
+            )
+            self.fields['new_password'] = forms.CharField(
+                label='Nueva contraseña',
+                strip=False,
+                widget=forms.PasswordInput(attrs={
+                    'autocomplete': 'new-password',
+                }),
+            )
+            self.fields['confirm_password'] = forms.CharField(
+                label='Repetir nueva contraseña',
+                strip=False,
+                widget=forms.PasswordInput(attrs={
+                    'autocomplete': 'new-password',
+                }),
+            )
+
+        for field in self.fields.values():
+            field.widget.attrs['class'] = (
+                'form-control bg-secondary text-white border-0 py-2'
+            )
+
+    def clean_username(self):
+        username = self.cleaned_data['username'].strip()
+        if Usuario.objects.filter(username__iexact=username).exclude(
+            pk=self.usuario.pk
+        ).exists():
+            raise forms.ValidationError('Ese nombre de usuario ya está en uso.')
+        return username
+
+    def clean_email(self):
+        email = self.cleaned_data['email'].strip().lower()
+        if (
+            Usuario.objects.filter(email__iexact=email).exclude(pk=self.usuario.pk).exists()
+            or Usuario.objects.filter(username__iexact=email).exclude(pk=self.usuario.pk).exists()
+        ):
+            raise forms.ValidationError('Ese correo ya está asociado a una cuenta.')
+        return email
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if self.campo != 'password':
+            return cleaned_data
+
+        if not self.usuario.check_password(cleaned_data.get('current_password', '')):
+            self.add_error('current_password', 'La contraseña vigente no es correcta.')
+        if cleaned_data.get('new_password') != cleaned_data.get('confirm_password'):
+            self.add_error(
+                'confirm_password',
+                'Las contraseñas nuevas no coinciden.',
+            )
+        if cleaned_data.get('new_password'):
+            try:
+                validate_password(cleaned_data['new_password'], self.usuario)
+            except ValidationError as error:
+                self.add_error('new_password', error)
+        return cleaned_data
+
+    def save(self):
+        if not self.is_valid():
+            raise ValueError('No se puede editar un dato con un formulario inválido.')
+        if self.campo == 'password':
+            self.usuario.set_password(self.cleaned_data['new_password'])
+            self.usuario.save(update_fields=['password'])
+        else:
+            valor = self.cleaned_data[self.campo]
+            setattr(self.usuario, self.campo, valor or '')
+            self.usuario.save(update_fields=[self.campo])
+        return self.usuario
 
 
 class LoginForm(forms.Form):

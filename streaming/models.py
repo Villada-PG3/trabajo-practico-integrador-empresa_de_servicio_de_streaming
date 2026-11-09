@@ -337,7 +337,6 @@ class Usuario(AbstractUser):
     telefono = PhoneNumberField(blank=True)
     pais = ForeignKey(Pais, on_delete=CASCADE, blank=True, null=True)
     idioma = ForeignKey(Idioma, on_delete=CASCADE, blank=True, null=True)
-    # hay que ver despues la cuestion con tarjeta
     
     def __str__(self):
         return self.username

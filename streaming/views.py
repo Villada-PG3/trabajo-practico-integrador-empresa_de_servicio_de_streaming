@@ -1,9 +1,18 @@
+import calendar
 import json
+from datetime import date
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from django.contrib import messages
-from django.contrib.auth import authenticate, get_user_model, login, logout
+from django.contrib.auth import (
+    authenticate,
+    get_user_model,
+    login,
+    logout,
+    update_session_auth_hash,
+)
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth import SESSION_KEY as AUTH_SESSION_KEY
 from django.core.files.storage import default_storage
 from django.db import transaction
 from django.db.models import (
@@ -24,6 +33,7 @@ from django.db.models import (
 )
 from django.db.models.functions import Coalesce, NullIf, Trim
 from django.http import JsonResponse
+from django.contrib.sessions.models import Session
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
@@ -31,7 +41,14 @@ from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST
 
-from .forms import LoginForm, PerfilForm, RegistroForm, ReporteVentasFiltroForm
+from .forms import (
+    CuentaPreferenciasForm,
+    EditarCuentaForm,
+    LoginForm,
+    PerfilForm,
+    RegistroForm,
+    ReporteVentasFiltroForm,
+)
 from .models import (
     Categoria,
     Calificacion,
@@ -43,6 +60,7 @@ from .models import (
     PerfilTitulo,
     Porver,
     Precio,
+    Registro,
     Suscripcion,
     Titulo,
 )
@@ -50,6 +68,94 @@ from .models import (
 LIMITE_TITULOS_CARRUSEL = 30
 LIMITE_PERFILES = 5
 SESION_PERFIL_ACTIVO = 'perfil_activo_id'
+
+
+def registrar_sesion_usuario(request, usuario):
+    session_key = request.session.session_key
+    if not session_key:
+        request.session.save()
+        session_key = request.session.session_key
+
+    if not session_key:
+        raise RuntimeError('No se pudo obtener el identificador de sesión.')
+
+    ahora = timezone.localtime()
+    registro = Registro.objects.filter(
+        usuario=usuario,
+        token_disp=session_key,
+    ).first()
+    if registro is None:
+        Registro.objects.create(
+            token_disp=session_key,
+            os=request.META.get('HTTP_USER_AGENT', 'Navegador')[:100],
+            ultima_conexion_fecha=ahora.date(),
+            ultima_conexion_hora=ahora.time(),
+            estado=True,
+            usuario=usuario,
+        )
+        return
+
+    registro.os = request.META.get('HTTP_USER_AGENT', 'Navegador')[:100]
+    registro.ultima_conexion_fecha = ahora.date()
+    registro.ultima_conexion_hora = ahora.time()
+    registro.estado = True
+    registro.save(update_fields=[
+        'os',
+        'ultima_conexion_fecha',
+        'ultima_conexion_hora',
+        'estado',
+    ])
+
+
+def contar_sesiones_abiertas(request, usuario):
+    session_key = request.session.session_key
+    sesiones_registradas = Registro.objects.filter(
+        usuario=usuario,
+        estado=True,
+    ).values_list('token_disp', flat=True)
+    claves_registradas = list(sesiones_registradas)
+    claves_vigentes = set(
+        Session.objects.filter(
+            session_key__in=claves_registradas,
+            expire_date__gt=timezone.now(),
+        ).values_list('session_key', flat=True)
+    )
+    Registro.objects.filter(
+        usuario=usuario,
+        estado=True,
+    ).exclude(token_disp=session_key).exclude(
+        token_disp__in=claves_vigentes,
+    ).update(estado=False)
+    return Registro.objects.filter(usuario=usuario, estado=True).count()
+
+
+def cerrar_sesiones_excepto(usuario, session_key):
+    otras_sesiones = []
+    sesiones_vigentes = Session.objects.filter(expire_date__gt=timezone.now())
+    for sesion in sesiones_vigentes.iterator():
+        if sesion.session_key == session_key:
+            continue
+        datos_sesion = sesion.get_decoded()
+        if str(datos_sesion.get(AUTH_SESSION_KEY, '')) == str(usuario.pk):
+            otras_sesiones.append(sesion.session_key)
+
+    if otras_sesiones:
+        Session.objects.filter(session_key__in=otras_sesiones).delete()
+    Registro.objects.filter(
+        usuario=usuario,
+        estado=True,
+    ).exclude(token_disp=session_key).update(estado=False)
+
+
+def calcular_proximo_cobro(fecha_vigencia):
+    if fecha_vigencia is None:
+        return None
+
+    mes_siguiente = fecha_vigencia.year * 12 + fecha_vigencia.month
+    anio, mes = divmod(mes_siguiente, 12)
+    mes += 1
+    ultimo_dia = calendar.monthrange(anio, mes)[1]
+    return date(anio, mes, min(fecha_vigencia.day, ultimo_dia))
 
 
 def active_profile(request):
@@ -340,9 +446,24 @@ def home(request):
             .first()
         )
 
+    idioma_preferido_id = getattr(request.user, 'idioma_id', None)
+    imagenes_idioma_query = IdiomaTitulo.objects.exclude(imagen='').order_by(
+        'idioma__nombre',
+        'id',
+    )
+    if idioma_preferido_id is not None:
+        imagenes_idioma_query = imagenes_idioma_query.order_by(
+            Case(
+                When(idioma_id=idioma_preferido_id, then=Value(0)),
+                default=Value(1),
+                output_field=IntegerField(),
+            ),
+            'idioma__nombre',
+            'id',
+        )
     imagenes_catalogo = Prefetch(
         'idioma_titulos',
-        queryset=IdiomaTitulo.objects.exclude(imagen='').order_by('idioma__nombre', 'id'),
+        queryset=imagenes_idioma_query,
         to_attr='imagenes_catalogo',
     )
     textos_catalogo = Prefetch(
@@ -727,6 +848,14 @@ def buscar_titulos_view(request):
         .prefetch_related(
             'titulo_categorias__categoria',
             'titulo_rol_elencos__rol_elenco__elenco',
+            Prefetch(
+                'idioma_titulos',
+                queryset=IdiomaTitulo.objects.select_related('idioma').order_by(
+                    'idioma__nombre',
+                    'pk',
+                ),
+                to_attr='idiomas_texto',
+            ),
             prefetch_contenidos_detalle(),
         )
     )
@@ -1012,15 +1141,20 @@ def login_view(request):
     form = LoginForm(request.POST or None)
     if request.method == 'POST' and form.is_valid():
         email = form.cleaned_data['email'].strip().lower()
+        user_model = get_user_model()
+        usuario = user_model.objects.filter(email__iexact=email).first()
+        if usuario is None:
+            usuario = user_model.objects.filter(username__iexact=email).first()
         user = authenticate(
             request,
-            username=email,
+            username=usuario.get_username() if usuario else email,
             password=form.cleaned_data['password'],
         )
         if user is not None:
             login(request, user)
             if not form.data.get('remember_me'):
                 request.session.set_expiry(0)
+            registrar_sesion_usuario(request, user)
             if Perfil.objects.filter(usuario=user, activo=True).exists():
                 return redirect('perfiles')
             return redirect('crear_perfil')
@@ -1031,6 +1165,12 @@ def login_view(request):
 
 def logout_view(request):
     if request.method == 'POST':
+        if request.user.is_authenticated and request.session.session_key:
+            Registro.objects.filter(
+                usuario=request.user,
+                token_disp=request.session.session_key,
+                estado=True,
+            ).update(estado=False)
         logout(request)
     return redirect('home')
 
@@ -1044,8 +1184,134 @@ def registro_view(request):
     if request.method == 'POST' and form.is_valid():
         user = form.save()
         login(request, user)
+        registrar_sesion_usuario(request, user)
         return redirect('crear_perfil')
     return render(request, 'registro.html', {'form': form})
+
+
+@login_required(login_url='login')
+def cuenta_view(request):
+    registrar_sesion_usuario(request, request.user)
+    seccion = request.GET.get('seccion', 'usuario')
+    if seccion not in {'usuario', 'suscripcion', 'mas-info'}:
+        seccion = 'usuario'
+
+    form = CuentaPreferenciasForm(
+        request.POST or None,
+        usuario=request.user,
+    )
+    if request.method == 'POST' and form.is_valid():
+        form.save()
+        messages.success(request, 'Se actualizaron tus preferencias.')
+        return redirect(f'{reverse("cuenta")}?seccion=usuario')
+
+    hoy = timezone.localdate()
+    suscripcion = (
+        Suscripcion.objects.filter(usuario=request.user)
+        .select_related('plan')
+        .prefetch_related('plan__plan_calidades__calidad')
+        .order_by('-fecha_inscripcion', '-pk')
+        .first()
+    )
+    precio_actual = None
+    ultimo_cobro = None
+    if suscripcion is not None:
+        precio_actual = (
+            Precio.objects.filter(
+                plan=suscripcion.plan,
+                fecha_inicio__lte=hoy,
+            )
+            .filter(Q(fecha_fin__isnull=True) | Q(fecha_fin__gte=hoy))
+            .order_by('-fecha_inicio', '-pk')
+            .first()
+        )
+        ultimo_cobro = (
+            suscripcion.cobros.select_related(
+                'tarjeta',
+                'tarjeta__marca_tarjeta',
+                'tarjeta__metodo_pago',
+            )
+            .order_by('-fecha_cobro', '-pk')
+            .first()
+        )
+
+    return render(request, 'cuenta.html', {
+        'form': form,
+        'seccion_cuenta': seccion,
+        'perfiles_activos': Perfil.objects.filter(
+            usuario=request.user,
+            activo=True,
+        ).count(),
+        'sesiones_abiertas': contar_sesiones_abiertas(request, request.user),
+        'suscripcion': suscripcion,
+        'proximo_cobro': (
+            calcular_proximo_cobro(suscripcion.fecha_vigencia)
+            if suscripcion is not None else None
+        ),
+        'precio_actual': precio_actual,
+        'ultimo_cobro': ultimo_cobro,
+        'calidades': (
+            suscripcion.plan.plan_calidades.select_related('calidad').order_by(
+                'calidad__nombre',
+                'pk',
+            )
+            if suscripcion is not None else []
+        ),
+        'pagina_cuenta': True,
+    })
+
+
+@login_required(login_url='login')
+@require_POST
+def cerrar_otras_sesiones_view(request):
+    session_key = request.session.session_key
+    if not session_key:
+        registrar_sesion_usuario(request, request.user)
+        session_key = request.session.session_key
+
+    cerrar_sesiones_excepto(request.user, session_key)
+    messages.success(
+        request,
+        'Se cerraron las demás sesiones. Esta sesión permanece abierta.',
+    )
+    return redirect(f'{reverse("cuenta")}?seccion=usuario')
+
+
+@login_required(login_url='login')
+def editar_dato_cuenta_view(request, campo):
+    if campo not in EditarCuentaForm.CAMPOS:
+        messages.error(request, 'El dato solicitado no se puede editar.')
+        return redirect(f'{reverse("cuenta")}?seccion=usuario')
+
+    form = EditarCuentaForm(
+        request.POST or None,
+        usuario=request.user,
+        campo=campo,
+    )
+    if request.method == 'POST' and form.is_valid():
+        es_contrasena = campo == 'password'
+        form.save()
+        if es_contrasena:
+            update_session_auth_hash(request, request.user)
+            session_key = request.session.session_key
+            if not session_key:
+                raise RuntimeError('No se pudo obtener la sesión actual tras cambiar la contraseña.')
+            registrar_sesion_usuario(request, request.user)
+            cerrar_sesiones_excepto(request.user, session_key)
+            messages.success(
+                request,
+                'Se actualizó la contraseña y se cerraron todas las demás sesiones. '
+                'Esta sesión permanece abierta.',
+            )
+        else:
+            messages.success(request, 'Se actualizó el dato de tu cuenta.')
+        return redirect(f'{reverse("cuenta")}?seccion=usuario')
+
+    return render(request, 'editar_cuenta_dato.html', {
+        'form': form,
+        'nombre_dato': EditarCuentaForm.CAMPOS[campo],
+        'pagina_cuenta': True,
+    })
 
 
 @login_required

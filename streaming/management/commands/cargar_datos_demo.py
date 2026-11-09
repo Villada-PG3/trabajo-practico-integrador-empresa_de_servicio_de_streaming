@@ -43,6 +43,53 @@ from streaming.models import (
 
 Usuario = get_user_model()
 
+TRADUCCIONES_TITULOS_INGLES = {
+    'La ruta de prueba': (
+        'Test Route',
+        'A fictional movie created to test the streaming platform.',
+    ),
+    'Misterios de muestra': (
+        'Sample Mysteries',
+        'A fictional mystery series created to test the streaming platform.',
+    ),
+    'Horizonte de cobre': (
+        'Copper Horizon',
+        'A journey across a distant landscape puts courage and loyalty to the test.',
+    ),
+    'Código lunar': (
+        'Lunar Code',
+        'A hidden message on the Moon leads a team into a race against time.',
+    ),
+    'Estación Boreal': (
+        'Boreal Station',
+        'A remote research station uncovers a mystery beneath the northern lights.',
+    ),
+    'Archivo del viento': (
+        'The Wind Archive',
+        'An archivist discovers that forgotten records can change the present.',
+    ),
+    'El último faro': (
+        'The Last Lighthouse',
+        'A lighthouse keeper follows a signal that should not exist.',
+    ),
+    'Niebla roja': (
+        'Red Fog',
+        'A town is hidden by a strange fog as its residents search for answers.',
+    ),
+    'Guardia nocturna': (
+        'Night Watch',
+        'A night-shift team investigates a series of unexplained events.',
+    ),
+    'Planeta oculto': (
+        'Hidden Planet',
+        'Explorers document a world that does not appear on any star chart.',
+    ),
+    'Habitación 404': (
+        'Room 404',
+        'Guests at an old hotel discover that one room changes every night.',
+    ),
+}
+
 
 class Command(BaseCommand):
     help = 'Carga datos ficticios de demostración sin borrar ni duplicar los existentes.'
@@ -362,19 +409,18 @@ class Command(BaseCommand):
             if imagen_banner and idioma_titulo_espanol.imagen.name != imagen_banner:
                 idioma_titulo_espanol.imagen = imagen_banner
             idioma_titulo_espanol.save()
-            if titulo == serie:
-                idioma_titulo_ingles = IdiomaTitulo.objects.filter(
+            traduccion_titulo = TRADUCCIONES_TITULOS_INGLES.get(
+                titulo.nombre_original,
+            )
+            if traduccion_titulo:
+                IdiomaTitulo.objects.update_or_create(
                     titulo=titulo,
                     idioma=ingles,
-                ).order_by('pk').first()
-                if idioma_titulo_ingles is None:
-                    idioma_titulo_ingles = IdiomaTitulo(
-                        titulo=titulo,
-                        idioma=ingles,
-                    )
-                idioma_titulo_ingles.nombre = titulo.nombre_original
-                idioma_titulo_ingles.descripcion = titulo.descripcion_original or ''
-                idioma_titulo_ingles.save()
+                    defaults={
+                        'nombre': traduccion_titulo[0],
+                        'descripcion': traduccion_titulo[1],
+                    },
+                )
 
             contenido, _ = Contenido.objects.get_or_create(
                 nombre=f'{titulo.nombre_original} - contenido principal',
@@ -404,6 +450,18 @@ class Command(BaseCommand):
                 campos_idioma_contenido.append('descripcion')
             if campos_idioma_contenido:
                 idioma_contenido.save(update_fields=campos_idioma_contenido)
+            if traduccion_titulo:
+                IdiomaContenido.objects.update_or_create(
+                    idioma=ingles,
+                    contenido=contenido,
+                    defaults={
+                        'nombre': f'{traduccion_titulo[0]} - Main Feature',
+                        'descripcion': (
+                            f'Main demonstration content for '
+                            f'{traduccion_titulo[0]}.'
+                        ),
+                    },
+                )
             for calidad in (calidad_hd, calidad_full_hd):
                 CalidadIdiomaContenido.objects.get_or_create(
                     idioma_contenido=idioma_contenido,
@@ -435,6 +493,21 @@ class Command(BaseCommand):
                     if not episodio_demo.duracion_segundos:
                         episodio_demo.duracion_segundos = 2700
                         episodio_demo.save(update_fields=['duracion_segundos'])
+                    if traduccion_titulo:
+                        IdiomaContenido.objects.update_or_create(
+                            idioma=ingles,
+                            contenido=episodio_demo,
+                            defaults={
+                                'nombre': (
+                                    f'Season {temporada}, Episode {episodio} - '
+                                    f'{traduccion_titulo[0]}'
+                                ),
+                                'descripcion': (
+                                    f'Episode {episodio} of season {temporada} '
+                                    f'of {traduccion_titulo[0]}.'
+                                ),
+                            },
+                        )
 
         plan_basico, _ = Plan.objects.get_or_create(
             nombre='Plan Demo Basico',
@@ -505,8 +578,8 @@ class Command(BaseCommand):
         )
         tarjeta, _ = Tarjeta.objects.get_or_create(
             numero='0000000000000000',
+            nombre_titular='USUARIO DE PRUEBA',
             defaults={
-                'nombre_titular': 'USUARIO DE PRUEBA',
                 'fecha_vencimiento': date(hoy.year + 2, hoy.month, 1),
                 'marca_tarjeta': marca,
                 'metodo_pago': metodo_pago,

@@ -3,13 +3,16 @@ from decimal import Decimal
 from io import StringIO
 
 from django.core.management import call_command
-from django.test import TestCase, override_settings
+from django.core.management.base import CommandError
+from django.contrib.sessions.models import Session
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
 from .models import (
     Categoria,
     Calificacion,
+    Calidad,
     Contenido,
     Elenco,
     Imagen,
@@ -21,8 +24,15 @@ from .models import (
     PerfilContenido,
     PerfilTitulo,
     Plan,
+    PlanCalidad,
     Precio,
     Porver,
+    Registro,
+    MarcaTarjeta,
+    MetodoPago,
+    Tarjeta,
+    EstadoCobro,
+    Cobro,
     Rol,
     RolElenco,
     Suscripcion,
@@ -187,6 +197,469 @@ class FlujoCuentaTests(TestCase):
         suscripcion = Suscripcion.objects.get(usuario=usuario)
         self.assertEqual(suscripcion.plan, plan)
         self.assertEqual(suscripcion.fecha_inscripcion, timezone.localdate())
+
+
+class CuentaTests(TestCase):
+    def setUp(self):
+        self.pais = Pais.objects.create(nombre='Argentina')
+        self.otro_pais = Pais.objects.create(nombre='Chile')
+        self.idioma = Idioma.objects.create(nombre='Español')
+        self.otro_idioma = Idioma.objects.create(nombre='English')
+        self.usuario = Usuario.objects.create_user(
+            username='cuenta@example.com',
+            email='cuenta@example.com',
+            password='Clave-Segura-2026!',
+            pais=self.pais,
+            idioma=self.idioma,
+        )
+        self.client.force_login(self.usuario)
+
+    def test_pagina_cuenta_requiere_autenticacion_y_muestra_campos(self):
+        self.client.logout()
+        respuesta_sin_sesion = self.client.get(reverse('cuenta'))
+
+        self.assertRedirects(
+            respuesta_sin_sesion,
+            f'{reverse("login")}?next={reverse("cuenta")}',
+        )
+
+        self.client.force_login(self.usuario)
+        respuesta = self.client.get(reverse('cuenta'))
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertContains(respuesta, 'Cuenta')
+        self.assertContains(respuesta, 'Nombre de usuario')
+        self.assertContains(respuesta, 'Correo electrónico')
+        self.assertContains(respuesta, 'Perfiles activos')
+        self.assertContains(respuesta, 'Sesiones abiertas')
+        self.assertContains(respuesta, '••••••••')
+        self.assertContains(respuesta, 'No asignado')
+        self.assertContains(respuesta, 'Guardar preferencias')
+        self.assertContains(respuesta, 'href="/cuenta/"')
+        self.assertContains(respuesta, 'Cerrar todas')
+        self.assertTrue(Registro.objects.filter(
+            usuario=self.usuario,
+            token_disp=self.client.session.session_key,
+            estado=True,
+        ).exists())
+
+    def test_cerrar_todas_las_sesiones_conserva_la_actual(self):
+        self.client.get(reverse('cuenta'))
+        sesion_actual = self.client.session.session_key
+        otro_cliente = Client()
+        respuesta_login = otro_cliente.post(reverse('login'), {
+            'email': self.usuario.email,
+            'password': 'Clave-Segura-2026!',
+        })
+        self.assertRedirects(respuesta_login, reverse('crear_perfil'))
+        otra_sesion = otro_cliente.session.session_key
+        self.assertNotEqual(sesion_actual, otra_sesion)
+        self.assertTrue(Session.objects.filter(session_key=otra_sesion).exists())
+
+        respuesta = self.client.post(reverse('cerrar_otras_sesiones'))
+
+        self.assertRedirects(respuesta, f'{reverse("cuenta")}?seccion=usuario')
+        self.assertTrue(Session.objects.filter(session_key=sesion_actual).exists())
+        self.assertFalse(Session.objects.filter(session_key=otra_sesion).exists())
+        self.assertTrue(Registro.objects.get(
+            usuario=self.usuario,
+            token_disp=sesion_actual,
+        ).estado)
+        self.assertFalse(Registro.objects.get(
+            usuario=self.usuario,
+            token_disp=otra_sesion,
+        ).estado)
+        respuesta_cuenta = self.client.get(reverse('cuenta'))
+        self.assertEqual(respuesta_cuenta.status_code, 200)
+        self.assertEqual(respuesta_cuenta.context['sesiones_abiertas'], 1)
+        self.assertRedirects(
+            otro_cliente.get(reverse('cuenta')),
+            f'{reverse("login")}?next={reverse("cuenta")}',
+        )
+
+    def test_logout_cierra_el_registro_de_la_sesion_actual(self):
+        self.client.get(reverse('cuenta'))
+        session_key = self.client.session.session_key
+
+        respuesta = self.client.post(reverse('logout'))
+
+        self.assertRedirects(respuesta, reverse('home'))
+        self.assertFalse(Registro.objects.get(
+            usuario=self.usuario,
+            token_disp=session_key,
+        ).estado)
+
+    def test_cerrar_sesiones_rechaza_metodo_get(self):
+        respuesta = self.client.get(reverse('cerrar_otras_sesiones'))
+
+        self.assertEqual(respuesta.status_code, 405)
+
+    def test_preferencias_de_cuenta_se_actualizan_desde_la_pestana_usuario(self):
+        respuesta = self.client.post(
+            reverse('cuenta'),
+            {
+                'pais': self.otro_pais.pk,
+                'idioma': self.otro_idioma.pk,
+            },
+        )
+
+        self.assertRedirects(respuesta, f'{reverse("cuenta")}?seccion=usuario')
+        self.usuario.refresh_from_db()
+        self.assertEqual(self.usuario.pais, self.otro_pais)
+        self.assertEqual(self.usuario.idioma, self.otro_idioma)
+
+    def test_editar_username_independiente_y_login_por_correo(self):
+        respuesta = self.client.post(
+            reverse('editar_dato_cuenta', args=['username']),
+            {'username': 'usuario-publico'},
+        )
+
+        self.assertRedirects(respuesta, f'{reverse("cuenta")}?seccion=usuario')
+        self.usuario.refresh_from_db()
+        self.assertEqual(self.usuario.username, 'usuario-publico')
+        self.client.logout()
+        respuesta_login = self.client.post(reverse('login'), {
+            'email': 'cuenta@example.com',
+            'password': 'Clave-Segura-2026!',
+        })
+        self.assertRedirects(respuesta_login, reverse('crear_perfil'))
+        self.assertTrue('_auth_user_id' in self.client.session)
+
+    def test_correo_no_se_puede_cambiar_por_uno_ya_asignado(self):
+        Usuario.objects.create_user(
+            username='ocupado@example.com',
+            email='ocupado@example.com',
+            password='Clave-Segura-2026!',
+        )
+
+        respuesta = self.client.post(
+            reverse('editar_dato_cuenta', args=['email']),
+            {'email': 'OCUPADO@example.com'},
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertContains(respuesta, 'Ese correo ya está asociado a una cuenta.')
+        self.usuario.refresh_from_db()
+        self.assertEqual(self.usuario.email, 'cuenta@example.com')
+
+    def test_cambiar_correo_permite_iniciar_sesion_con_nuevo_correo(self):
+        respuesta = self.client.post(
+            reverse('editar_dato_cuenta', args=['email']),
+            {'email': 'nuevo@example.com'},
+        )
+
+        self.assertRedirects(respuesta, f'{reverse("cuenta")}?seccion=usuario')
+        self.usuario.refresh_from_db()
+        self.assertEqual(self.usuario.email, 'nuevo@example.com')
+        self.assertEqual(self.usuario.username, 'cuenta@example.com')
+        self.client.logout()
+
+        respuesta_login = self.client.post(reverse('login'), {
+            'email': 'nuevo@example.com',
+            'password': 'Clave-Segura-2026!',
+        })
+
+        self.assertRedirects(respuesta_login, reverse('crear_perfil'))
+        self.assertTrue('_auth_user_id' in self.client.session)
+
+    def test_cuenta_muestra_suscripcion_mas_reciente_y_sus_calidades(self):
+        plan_anterior = Plan.objects.create(
+            nombre='Plan anterior',
+            cantidad_pantallas_simultaneas=1,
+        )
+        plan_actual = Plan.objects.create(
+            nombre='Plan actual',
+            cantidad_pantallas_simultaneas=2,
+        )
+        Suscripcion.objects.create(
+            usuario=self.usuario,
+            plan=plan_anterior,
+            fecha_inscripcion=date(2025, 1, 1),
+            fecha_vigencia=date(2025, 2, 1),
+        )
+        suscripcion_actual = Suscripcion.objects.create(
+            usuario=self.usuario,
+            plan=plan_actual,
+            fecha_inscripcion=date(2026, 1, 1),
+            fecha_vigencia=date(2026, 12, 1),
+        )
+        Precio.objects.create(
+            plan=plan_actual,
+            precio=19.99,
+            fecha_inicio=timezone.localdate(),
+        )
+        calidad = Calidad.objects.create(nombre='Full HD')
+        PlanCalidad.objects.create(plan=plan_actual, calidad=calidad)
+        perfil_activo = Perfil.objects.create(
+            nombre='Principal',
+            imagen=Imagen.objects.first(),
+            tipo_perfil=TipoPerfil.objects.create(
+                nombre='Cuenta test adulto',
+                edad_max=100,
+            ),
+            usuario=self.usuario,
+            activo=True,
+        )
+        Perfil.objects.create(
+            nombre='Desactivado',
+            imagen=perfil_activo.imagen,
+            tipo_perfil=perfil_activo.tipo_perfil,
+            usuario=self.usuario,
+            activo=False,
+        )
+        Registro.objects.create(
+            token_disp='activo-1',
+            os='Navegador',
+            ultima_conexion_fecha=timezone.localdate(),
+            ultima_conexion_hora=timezone.localtime().time(),
+            estado=True,
+            usuario=self.usuario,
+        )
+        Registro.objects.create(
+            token_disp='inactivo-1',
+            os='Dispositivo cerrado',
+            ultima_conexion_fecha=timezone.localdate(),
+            ultima_conexion_hora=timezone.localtime().time(),
+            estado=False,
+            usuario=self.usuario,
+        )
+
+        respuesta = self.client.get(reverse('cuenta'), {'seccion': 'suscripcion'})
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.context['suscripcion'], suscripcion_actual)
+        self.assertContains(respuesta, 'Plan actual')
+        self.assertContains(respuesta, '$19.99')
+        self.assertContains(respuesta, 'Full HD')
+        self.assertContains(respuesta, 'Dispositivos simultáneos')
+        self.assertContains(respuesta, '<dd class="col-sm-7 account-subscription-value">2</dd>', html=True)
+        self.assertContains(respuesta, '01/01/2026')
+        self.assertContains(respuesta, 'Próximo Cobro')
+        self.assertContains(respuesta, '01/01/2027')
+        self.assertNotContains(respuesta, 'Plan anterior')
+        self.assertEqual(respuesta.context['perfiles_activos'], 1)
+        self.assertEqual(respuesta.context['sesiones_abiertas'], 1)
+
+    def test_suscripcion_muestra_ultimos_digitos_de_la_tarjeta_del_cobro_mas_reciente(self):
+        plan = Plan.objects.create(
+            nombre='Plan con cobros',
+            cantidad_pantallas_simultaneas=1,
+        )
+        suscripcion = Suscripcion.objects.create(
+            usuario=self.usuario,
+            plan=plan,
+            fecha_inscripcion=date(2026, 1, 1),
+            fecha_vigencia=date(2026, 12, 1),
+        )
+        marca = MarcaTarjeta.objects.create(nombre='Visa', numero_asignado=4)
+        metodo = MetodoPago.objects.create(nombre='Tarjeta')
+        tarjeta_anterior = Tarjeta.objects.create(
+            numero='4111111111111111',
+            nombre_titular='Titular',
+            fecha_vencimiento=date(2028, 1, 1),
+            marca_tarjeta=marca,
+            metodo_pago=metodo,
+        )
+        tarjeta_actual = Tarjeta.objects.create(
+            numero='5555444433332222',
+            nombre_titular='Titular',
+            fecha_vencimiento=date(2029, 1, 1),
+            marca_tarjeta=marca,
+            metodo_pago=metodo,
+        )
+        estado = EstadoCobro.objects.create(nombre='Aprobado')
+        Cobro.objects.create(
+            num_factura=1,
+            suscripcion=suscripcion,
+            fecha_cobro=date(2026, 2, 1),
+            estado_cobro=estado,
+            tarjeta=tarjeta_anterior,
+            monto=10,
+        )
+        cobro_reciente = Cobro.objects.create(
+            num_factura=2,
+            suscripcion=suscripcion,
+            fecha_cobro=date(2026, 3, 1),
+            estado_cobro=estado,
+            tarjeta=tarjeta_actual,
+            monto=10,
+        )
+
+        respuesta = self.client.get(
+            reverse('cuenta'),
+            {'seccion': 'suscripcion'},
+        )
+
+        self.assertEqual(respuesta.context['ultimo_cobro'], cobro_reciente)
+        self.assertContains(respuesta, 'Visa terminada en 2222')
+        self.assertNotContains(respuesta, '4111')
+        self.assertNotContains(respuesta, '5555444433332222')
+
+    def test_suscripcion_sin_cobros_muestra_mensaje_para_tarjeta(self):
+        Suscripcion.objects.create(
+            usuario=self.usuario,
+            plan=Plan.objects.create(
+                nombre='Plan sin cobros',
+                cantidad_pantallas_simultaneas=1,
+            ),
+            fecha_inscripcion=date(2026, 1, 1),
+            fecha_vigencia=date(2026, 12, 1),
+        )
+
+        respuesta = self.client.get(
+            reverse('cuenta'),
+            {'seccion': 'suscripcion'},
+        )
+
+        self.assertContains(respuesta, 'Tarjeta asociada')
+        self.assertContains(respuesta, 'No hay cobros registrados.')
+
+    def test_proximo_cobro_ajusta_el_dia_al_ultimo_del_mes(self):
+        suscripcion = Suscripcion.objects.create(
+            usuario=self.usuario,
+            plan=Plan.objects.create(
+                nombre='Plan mensual',
+                cantidad_pantallas_simultaneas=1,
+            ),
+            fecha_inscripcion=date(2026, 1, 1),
+            fecha_vigencia=date(2026, 1, 31),
+        )
+
+        respuesta = self.client.get(
+            reverse('cuenta'),
+            {'seccion': 'suscripcion'},
+        )
+
+        self.assertEqual(respuesta.context['proximo_cobro'], date(2026, 2, 28))
+        self.assertContains(respuesta, '28/02/2026')
+
+        suscripcion.fecha_vigencia = date(2024, 1, 31)
+        suscripcion.save(update_fields=['fecha_vigencia'])
+        respuesta_bisiesta = self.client.get(
+            reverse('cuenta'),
+            {'seccion': 'suscripcion'},
+        )
+        self.assertEqual(
+            respuesta_bisiesta.context['proximo_cobro'],
+            date(2024, 2, 29),
+        )
+
+        suscripcion.fecha_vigencia = date(2026, 12, 31)
+        suscripcion.save(update_fields=['fecha_vigencia'])
+        respuesta_cambio_anio = self.client.get(
+            reverse('cuenta'),
+            {'seccion': 'suscripcion'},
+        )
+        self.assertEqual(
+            respuesta_cambio_anio.context['proximo_cobro'],
+            date(2027, 1, 31),
+        )
+
+    def test_sin_fecha_vigencia_no_calcula_proximo_cobro(self):
+        Suscripcion.objects.create(
+            usuario=self.usuario,
+            plan=Plan.objects.create(
+                nombre='Plan sin vigencia',
+                cantidad_pantallas_simultaneas=1,
+            ),
+            fecha_inscripcion=date(2026, 1, 1),
+            fecha_vigencia=None,
+        )
+
+        respuesta = self.client.get(
+            reverse('cuenta'),
+            {'seccion': 'suscripcion'},
+        )
+
+        self.assertIsNone(respuesta.context['proximo_cobro'])
+        self.assertContains(respuesta, 'Próximo Cobro')
+        self.assertContains(respuesta, 'No asignado')
+
+    def test_editar_contrasena_requiere_actual_y_dos_entradas_iguales(self):
+        respuesta = self.client.post(
+            reverse('editar_dato_cuenta', args=['password']),
+            {
+                'current_password': 'Clave-Segura-2026!',
+                'new_password': 'Otra-Clave-Segura-2026!',
+                'confirm_password': 'Otra-Clave-Segura-2026!',
+            },
+        )
+
+        self.assertRedirects(respuesta, f'{reverse("cuenta")}?seccion=usuario')
+        self.usuario.refresh_from_db()
+        self.assertTrue(self.usuario.check_password('Otra-Clave-Segura-2026!'))
+
+    def test_cambiar_contrasena_cierra_otras_sesiones_y_conserva_la_actual(self):
+        self.client.get(reverse('cuenta'))
+        session_key_actual = self.client.session.session_key
+        otro_cliente = Client()
+        otro_cliente.post(reverse('login'), {
+            'email': self.usuario.email,
+            'password': 'Clave-Segura-2026!',
+        })
+        session_key_otra = otro_cliente.session.session_key
+        self.assertTrue(Session.objects.filter(session_key=session_key_otra).exists())
+        self.assertContains(
+            self.client.get(reverse('editar_dato_cuenta', args=['password'])),
+            'se cerrarán todas las sesiones excepto la actual',
+        )
+
+        respuesta = self.client.post(
+            reverse('editar_dato_cuenta', args=['password']),
+            {
+                'current_password': 'Clave-Segura-2026!',
+                'new_password': 'Otra-Clave-Segura-2026!',
+                'confirm_password': 'Otra-Clave-Segura-2026!',
+            },
+        )
+
+        self.assertRedirects(respuesta, f'{reverse("cuenta")}?seccion=usuario')
+        session_key_actual_nueva = self.client.session.session_key
+        self.assertNotEqual(session_key_actual_nueva, session_key_actual)
+        self.assertTrue(Session.objects.filter(
+            session_key=session_key_actual_nueva,
+        ).exists())
+        self.assertFalse(Session.objects.filter(session_key=session_key_otra).exists())
+        self.usuario.refresh_from_db()
+        self.assertTrue(self.usuario.check_password('Otra-Clave-Segura-2026!'))
+        self.assertTrue(Registro.objects.get(
+            usuario=self.usuario,
+            token_disp=session_key_actual_nueva,
+        ).estado)
+        self.assertFalse(Registro.objects.get(
+            usuario=self.usuario,
+            token_disp=session_key_otra,
+        ).estado)
+        self.assertEqual(self.client.get(reverse('cuenta')).status_code, 200)
+        self.assertRedirects(
+            otro_cliente.get(reverse('cuenta')),
+            f'{reverse("login")}?next={reverse("cuenta")}',
+        )
+        self.assertTrue('_auth_user_id' in self.client.session)
+        self.assertEqual(self.client.get(reverse('cuenta')).status_code, 200)
+
+    def test_editar_contrasena_rechaza_actual_incorrecta_y_confirmacion_distinta(self):
+        respuesta = self.client.post(
+            reverse('editar_dato_cuenta', args=['password']),
+            {
+                'current_password': 'incorrecta',
+                'new_password': 'Otra-Clave-Segura-2026!',
+                'confirm_password': 'No-coincide-2026!',
+            },
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertContains(respuesta, 'La contraseña vigente no es correcta.')
+        self.assertContains(respuesta, 'Las contraseñas nuevas no coinciden.')
+        self.usuario.refresh_from_db()
+        self.assertTrue(self.usuario.check_password('Clave-Segura-2026!'))
+
+    def test_pestana_mas_info_muestra_texto_legal_inicial(self):
+        respuesta = self.client.get(reverse('cuenta'), {'seccion': 'mas-info'})
+
+        self.assertContains(respuesta, 'Términos de uso')
+        self.assertContains(respuesta, 'Privacidad y datos personales')
+        self.assertContains(respuesta, 'Debe ser revisado y aprobado legalmente')
 
 
 class ReporteVentasTests(TestCase):
@@ -403,6 +876,70 @@ class HomeCarouselesTests(TestCase):
         self.assertContains(respuesta, 'Nombre original alternativo')
         self.assertContains(respuesta, 'Descripción localizada')
         self.assertNotContains(respuesta, 'Nombre original</h1>')
+
+    def test_preferencia_ingles_localiza_titulo_y_contenido_en_home(self):
+        ingles = Idioma.objects.create(nombre='Inglés')
+        titulo = self.crear_titulo(
+            'Nombre original',
+            self.serie,
+            con_contenido=True,
+        )
+        titulo.descripcion_original = 'Descripción original.'
+        titulo.save(update_fields=['descripcion_original'])
+        IdiomaTitulo.objects.create(
+            titulo=titulo,
+            idioma=ingles,
+            nombre='English Series',
+            descripcion='An English title description.',
+        )
+        contenido = titulo.contenidos.get()
+        contenido.descripcion = 'Descripción del episodio original.'
+        contenido.save(update_fields=['descripcion'])
+        IdiomaContenido.objects.create(
+            contenido=contenido,
+            idioma=ingles,
+            nombre='English Episode',
+            descripcion='An English episode description.',
+        )
+        usuario = Usuario.objects.create_user(
+            username='preferencia-idioma@example.com',
+            email='preferencia-idioma@example.com',
+            password='UnaClave-larga-2026!',
+        )
+        self.autenticar_con_perfil(usuario)
+
+        respuesta_preferencias = self.client.post(
+            reverse('cuenta'),
+            {'pais': '', 'idioma': ingles.pk},
+        )
+        self.assertRedirects(
+            respuesta_preferencias,
+            f'{reverse("cuenta")}?seccion=usuario',
+        )
+        respuesta_home = self.client.get(
+            reverse('home'),
+            {'titulo': titulo.pk},
+        )
+
+        titulo_home = next(
+            titulo_en_lista
+            for carrusel in respuesta_home.context['carruseles']
+            for titulo_en_lista in carrusel['titulos']
+            if titulo_en_lista.pk == titulo.pk
+        )
+        self.assertEqual(titulo_home.nombre_mostrar, 'English Series')
+        self.assertEqual(
+            titulo_home.descripcion_mostrar,
+            'An English title description.',
+        )
+        self.assertEqual(
+            titulo_home.contenidos_detalle[0]['nombre'],
+            'English Episode',
+        )
+        self.assertEqual(
+            titulo_home.contenidos_detalle[0]['descripcion'],
+            'An English episode description.',
+        )
 
     def test_idioma_contenido_puede_tener_imagen_de_episodio(self):
         titulo = self.crear_titulo('Serie con episodio', self.serie, con_contenido=True)
@@ -1266,7 +1803,14 @@ class HomeCarouselesTests(TestCase):
             titulo=localizado,
             idioma=ingles,
             nombre='The Northern Lights',
-            descripcion='',
+            descripcion='A documentary about the northern lights.',
+        )
+        contenido_localizado = localizado.contenidos.get()
+        IdiomaContenido.objects.create(
+            contenido=contenido_localizado,
+            idioma=ingles,
+            nombre='Northern Lights Feature',
+            descripcion='A closer look at the lights in the sky.',
         )
         sin_traduccion = self.crear_titulo(
             'Northern Stories',
@@ -1326,6 +1870,18 @@ class HomeCarouselesTests(TestCase):
         )
         resultado_guardado = next(r for r in resultados if r['id'] == localizado.pk)
         resultado_disponible = next(r for r in resultados if r['id'] == sin_traduccion.pk)
+        self.assertEqual(
+            resultado_guardado['descripcion'],
+            'A documentary about the northern lights.',
+        )
+        self.assertEqual(
+            resultado_guardado['contenidos'][0]['nombre'],
+            'Northern Lights Feature',
+        )
+        self.assertEqual(
+            resultado_guardado['contenidos'][0]['descripcion'],
+            'A closer look at the lights in the sky.',
+        )
         self.assertTrue(resultado_guardado['en_mi_lista'])
         self.assertFalse(resultado_disponible['en_mi_lista'])
         self.assertEqual(resultado_disponible['puntuacion_perfil'], '')
@@ -2253,6 +2809,19 @@ class CargarDatosDemoTests(TestCase):
             IdiomaTitulo.objects.get(titulo=ruta_demo, idioma__nombre='Español').nombre,
             ruta_demo.nombre_original,
         )
+        titulo_ingles = IdiomaTitulo.objects.get(
+            titulo=ruta_demo,
+            idioma__nombre='Inglés',
+        )
+        self.assertEqual(titulo_ingles.nombre, 'Test Route')
+        self.assertIn('fictional movie', titulo_ingles.descripcion)
+        contenido_ingles = IdiomaContenido.objects.get(
+            contenido__titulo=ruta_demo,
+            contenido__seccion=1,
+            idioma__nombre='Inglés',
+        )
+        self.assertEqual(contenido_ingles.nombre, 'Test Route - Main Feature')
+        self.assertIn('demonstration content', contenido_ingles.descripcion)
         self.assertTrue(Imagen.objects.filter(nombre='Avatar Dorado').exists())
         self.assertTrue(
             IdiomaTitulo.objects.filter(imagen__startswith='demo/banners/').exists()
@@ -2260,12 +2829,100 @@ class CargarDatosDemoTests(TestCase):
 
         conteos_primera_carga = {
             modelo: modelo.objects.count()
-            for modelo in (Categoria, Contenido, Imagen, Titulo, Suscripcion)
+            for modelo in (
+                Categoria,
+                Contenido,
+                Imagen,
+                IdiomaTitulo,
+                IdiomaContenido,
+                Titulo,
+                Suscripcion,
+            )
         }
         call_command('cargar_datos_demo', stdout=StringIO())
         conteos_segunda_carga = {
             modelo: modelo.objects.count()
-            for modelo in (Categoria, Contenido, Imagen, Titulo, Suscripcion)
+            for modelo in (
+                Categoria,
+                Contenido,
+                Imagen,
+                IdiomaTitulo,
+                IdiomaContenido,
+                Titulo,
+                Suscripcion,
+            )
         }
 
         self.assertEqual(conteos_segunda_carga, conteos_primera_carga)
+
+    @override_settings(DEBUG=True)
+    def test_completar_cobros_demo_cubre_todas_las_cuentas_y_es_idempotente(self):
+        plan = Plan.objects.create(
+            nombre='Plan ya existente',
+            cantidad_pantallas_simultaneas=1,
+        )
+        usuario_con_suscripcion = Usuario.objects.create_user(
+            username='con-suscripcion@example.test',
+            email='con-suscripcion@example.test',
+            password='UnaClave-larga-2026!',
+        )
+        Suscripcion.objects.create(
+            usuario=usuario_con_suscripcion,
+            plan=plan,
+            fecha_inscripcion=date(2026, 1, 1),
+            fecha_vigencia=date(2026, 12, 1),
+        )
+        usuario_sin_suscripcion = Usuario.objects.create_user(
+            username='sin-suscripcion@example.test',
+            email='sin-suscripcion@example.test',
+            password='UnaClave-larga-2026!',
+        )
+        salida = StringIO()
+
+        call_command('completar_cobros_demo', stdout=salida)
+
+        self.assertEqual(Suscripcion.objects.filter(
+            usuario=usuario_con_suscripcion,
+        ).count(), 1)
+        self.assertEqual(Suscripcion.objects.filter(
+            usuario=usuario_sin_suscripcion,
+        ).count(), 1)
+        self.assertEqual(Cobro.objects.filter(
+            suscripcion__usuario__in=[
+                usuario_con_suscripcion,
+                usuario_sin_suscripcion,
+            ],
+        ).count(), 2)
+        cobro_demo = Cobro.objects.get(
+            suscripcion__usuario=usuario_sin_suscripcion,
+        )
+        self.assertEqual(cobro_demo.tarjeta.numero, '0000000000000000')
+        self.assertEqual(cobro_demo.tarjeta.marca_tarjeta.nombre, 'Tarjeta Demo')
+        self.assertEqual(cobro_demo.tarjeta.metodo_pago.nombre, 'Pago de prueba')
+        self.assertEqual(cobro_demo.estado_cobro.nombre, 'Aprobado (demo)')
+
+        call_command('completar_cobros_demo', stdout=StringIO())
+
+        self.assertEqual(Cobro.objects.filter(
+            suscripcion__usuario__in=[
+                usuario_con_suscripcion,
+                usuario_sin_suscripcion,
+            ],
+        ).count(), 2)
+
+    @override_settings(DEBUG=False)
+    def test_completar_cobros_demo_se_rechaza_fuera_de_debug(self):
+        usuario = Usuario.objects.create_user(
+            username='cuenta@example.test',
+            email='cuenta@example.test',
+            password='UnaClave-larga-2026!',
+        )
+
+        with self.assertRaisesMessage(
+            CommandError,
+            'solo puede ejecutarse con DEBUG activado',
+        ):
+            call_command('completar_cobros_demo', stdout=StringIO())
+
+        self.assertFalse(Suscripcion.objects.filter(usuario=usuario).exists())
+        self.assertFalse(Cobro.objects.filter(suscripcion__usuario=usuario).exists())
