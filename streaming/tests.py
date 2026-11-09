@@ -9,7 +9,11 @@ from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from .billing import fecha_inicio_suscripcion, procesar_cobros_demo
+from .billing import (
+    fecha_inicio_suscripcion,
+    procesar_cobros_demo,
+    suscripcion_activa,
+)
 from .forms import TarjetaDemoPlanForm
 from .models import (
     Categoria,
@@ -511,6 +515,8 @@ class CuentaTests(TestCase):
         self.assertContains(respuesta, '••••••••')
         self.assertContains(respuesta, 'No asignado')
         self.assertContains(respuesta, 'Guardar preferencias')
+        self.assertNotContains(respuesta, 'name="current_password"')
+        self.assertContains(respuesta, '.account-layout .form-select option')
         self.assertContains(respuesta, 'href="/cuenta/"')
         self.assertContains(respuesta, 'Cerrar todas')
         self.assertTrue(Registro.objects.filter(
@@ -584,10 +590,27 @@ class CuentaTests(TestCase):
         self.assertEqual(self.usuario.pais, self.otro_pais)
         self.assertEqual(self.usuario.idioma, self.otro_idioma)
 
+    def test_editar_dato_no_se_guarda_con_contrasena_incorrecta(self):
+        respuesta = self.client.post(
+            reverse('editar_dato_cuenta', args=['username']),
+            {
+                'username': 'usuario-no-autorizado',
+                'current_password': 'incorrecta',
+            },
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertContains(respuesta, 'La contraseña vigente no es correcta.')
+        self.usuario.refresh_from_db()
+        self.assertEqual(self.usuario.username, 'cuenta@example.com')
+
     def test_editar_username_independiente_y_login_por_correo(self):
         respuesta = self.client.post(
             reverse('editar_dato_cuenta', args=['username']),
-            {'username': 'usuario-publico'},
+            {
+                'username': 'usuario-publico',
+                'current_password': 'Clave-Segura-2026!',
+            },
         )
 
         self.assertRedirects(respuesta, f'{reverse("cuenta")}?seccion=usuario')
@@ -610,7 +633,10 @@ class CuentaTests(TestCase):
 
         respuesta = self.client.post(
             reverse('editar_dato_cuenta', args=['email']),
-            {'email': 'OCUPADO@example.com'},
+            {
+                'email': 'OCUPADO@example.com',
+                'current_password': 'Clave-Segura-2026!',
+            },
         )
 
         self.assertEqual(respuesta.status_code, 200)
@@ -621,7 +647,10 @@ class CuentaTests(TestCase):
     def test_cambiar_correo_permite_iniciar_sesion_con_nuevo_correo(self):
         respuesta = self.client.post(
             reverse('editar_dato_cuenta', args=['email']),
-            {'email': 'nuevo@example.com'},
+            {
+                'email': 'nuevo@example.com',
+                'current_password': 'Clave-Segura-2026!',
+            },
         )
 
         self.assertRedirects(respuesta, f'{reverse("cuenta")}?seccion=usuario')
@@ -715,6 +744,71 @@ class CuentaTests(TestCase):
         self.assertNotContains(respuesta, 'Plan anterior')
         self.assertEqual(respuesta.context['perfiles_activos'], 1)
         self.assertEqual(respuesta.context['sesiones_abiertas'], 1)
+
+    def test_cancelar_plan_programa_baja_para_el_proximo_cobro(self):
+        plan = Plan.objects.create(
+            nombre='Plan a cancelar',
+            cantidad_pantallas_simultaneas=1,
+        )
+        suscripcion = Suscripcion.objects.create(
+            usuario=self.usuario,
+            plan=plan,
+            fecha_inscripcion=date(2030, 2, 20),
+            fecha_vigencia=date(2030, 2, 20),
+        )
+        cambio = CambioPlan.objects.create(
+            suscripcion=suscripcion,
+            plan=Plan.objects.create(
+                nombre='Plan programado',
+                cantidad_pantallas_simultaneas=2,
+            ),
+            fecha_aplicacion=date(2030, 3, 20),
+            nombre_titular='Usuario de prueba',
+            tarjeta_ultimos4='1234',
+        )
+        self.assertContains(
+            self.client.get(reverse('cuenta'), {'seccion': 'suscripcion'}),
+            'Cancelar Plan',
+        )
+
+        respuesta = self.client.post(reverse('cancelar_suscripcion'))
+
+        self.assertRedirects(
+            respuesta,
+            f'{reverse("cuenta")}?seccion=suscripcion',
+        )
+        suscripcion.refresh_from_db()
+        cambio.refresh_from_db()
+        self.assertTrue(suscripcion.habilitado)
+        self.assertEqual(suscripcion.fecha_cancelacion, date(2030, 3, 20))
+        self.assertEqual(cambio.estado, CambioPlan.ESTADO_CANCELADO)
+        self.assertContains(
+            self.client.get(reverse('cuenta'), {'seccion': 'suscripcion'}),
+            'Fecha de cancelación',
+        )
+        self.assertTrue(suscripcion_activa(suscripcion, date(2030, 3, 19)))
+        self.assertFalse(suscripcion_activa(suscripcion, date(2030, 3, 20)))
+        self.assertContains(
+            self.client.get(reverse('cuenta'), {'seccion': 'suscripcion'}),
+            'Tu suscripción permanecerá activa hasta el',
+        )
+        self.assertNotContains(
+            self.client.get(reverse('cuenta'), {'seccion': 'suscripcion'}),
+            'Cancelar Plan',
+        )
+
+    def test_cancelar_suscripcion_rechaza_get_y_cuenta_sin_plan(self):
+        respuesta_get = self.client.get(reverse('cancelar_suscripcion'))
+        self.assertEqual(respuesta_get.status_code, 405)
+
+        respuesta_post = self.client.post(
+            reverse('cancelar_suscripcion'),
+            follow=True,
+        )
+        self.assertContains(
+            respuesta_post,
+            'No tienes una suscripción activa para cancelar.',
+        )
 
     def test_cambiar_plan_recolecta_datos_demo_y_programa_la_aplicacion(self):
         plan_actual = Plan.objects.create(
@@ -1053,9 +1147,28 @@ class CuentaTests(TestCase):
 
         self.assertContains(respuesta, 'Términos de uso')
         self.assertContains(respuesta, 'Privacidad y datos personales')
-        self.assertContains(respuesta, 'Debe ser revisado y aprobado legalmente')
+        self.assertNotContains(respuesta, 'Texto informativo inicial.')
         self.assertContains(respuesta, 'color: rgba(255, 255, 255, 0.9)')
-        self.assertContains(respuesta, 'color: #d7eff8')
+        self.assertContains(respuesta, '.account-legal h2')
+        self.assertContains(respuesta, 'color: #fff')
+        self.assertContains(respuesta, 'soporte@redflix.example')
+        self.assertContains(respuesta, 'privacidad@redflix.example')
+        self.assertContains(respuesta, '0800-RED-FLIX')
+        self.assertNotContains(respuesta, 'Debe ser revisado y aprobado legalmente')
+
+    def test_footer_no_muestra_opciones_eliminadas(self):
+        respuesta = self.client.get(reverse('cuenta'))
+
+        for opcion in (
+            'Inversores',
+            'Centro de ayuda',
+            'Empleo',
+            'Canjear tarjetas',
+            'Prensa',
+            'Comprar tarjetas',
+        ):
+            with self.subTest(opcion=opcion):
+                self.assertNotContains(respuesta, opcion)
 
 
 class ProcesamientoCobrosTests(TestCase):
@@ -1095,7 +1208,7 @@ class ProcesamientoCobrosTests(TestCase):
             email='cancelado-fechas@example.test',
             password='UnaClave-larga-2026!',
         )
-        Suscripcion.objects.create(
+        suscripcion_cancelada = Suscripcion.objects.create(
             usuario=usuario_cancelado,
             plan=plan,
             fecha_inscripcion=date(2026, 11, 1),
@@ -1105,8 +1218,10 @@ class ProcesamientoCobrosTests(TestCase):
         )
         self.assertEqual(
             fecha_inicio_suscripcion(usuario_cancelado, hoy),
-            hoy,
+            date(2026, 11, 1),
         )
+        self.assertTrue(suscripcion_activa(suscripcion_cancelada, date(2026, 11, 29)))
+        self.assertFalse(suscripcion_activa(suscripcion_cancelada, date(2026, 11, 30)))
 
     @override_settings(DEBUG=True)
     def test_worker_no_crea_cobro_si_el_siguiente_vencimiento_supera_cancelacion(self):
@@ -1141,16 +1256,111 @@ class ProcesamientoCobrosTests(TestCase):
             plan=plan,
             fecha_inscripcion=date(2026, 1, 31),
             fecha_vigencia=date(2026, 1, 31),
-            fecha_cancelacion=date(2026, 2, 27),
+            fecha_cancelacion=date(2026, 2, 28),
             tarjeta=tarjeta,
         )
+
+        resultado_antes = procesar_cobros_demo(
+            ahora=timezone.make_aware(datetime(2026, 2, 27, 12, 0, 0)),
+        )
+        self.assertEqual(
+            resultado_antes,
+            {
+                'creados': 0,
+                'aprobados': 0,
+                'suscripciones_canceladas': 0,
+            },
+        )
+        suscripcion.refresh_from_db()
+        self.assertTrue(suscripcion.habilitado)
 
         resultado = procesar_cobros_demo(
             ahora=timezone.make_aware(datetime(2026, 2, 28, 12, 0, 0)),
         )
 
-        self.assertEqual(resultado, {'creados': 0, 'aprobados': 0})
+        self.assertEqual(
+            resultado,
+            {
+                'creados': 0,
+                'aprobados': 0,
+                'suscripciones_canceladas': 1,
+            },
+        )
         self.assertFalse(Cobro.objects.filter(suscripcion=suscripcion).exists())
+        suscripcion.refresh_from_db()
+        self.assertFalse(suscripcion.habilitado)
+
+    @override_settings(DEBUG=True)
+    def test_worker_cancela_cobro_pendiente_en_fecha_de_baja(self):
+        usuario = Usuario.objects.create_user(
+            username='cancelacion-cobro-pendiente',
+            email='cancelacion-cobro-pendiente@example.test',
+            password='UnaClave-larga-2026!',
+        )
+        plan = Plan.objects.create(
+            nombre='Plan con baja pendiente',
+            cantidad_pantallas_simultaneas=1,
+        )
+        plan_siguiente = Plan.objects.create(
+            nombre='Plan siguiente pendiente',
+            cantidad_pantallas_simultaneas=2,
+        )
+        marca = MarcaTarjeta.objects.create(
+            nombre='Tarjeta Demo pendiente',
+            numero_asignado=0,
+        )
+        metodo = MetodoPago.objects.create(nombre='Pago pendiente demo')
+        tarjeta = Tarjeta.objects.create(
+            numero='4321',
+            nombre_titular='Usuario Demo',
+            fecha_vencimiento=date(2036, 2, 1),
+            marca_tarjeta=marca,
+            metodo_pago=metodo,
+        )
+        suscripcion = Suscripcion.objects.create(
+            usuario=usuario,
+            plan=plan,
+            fecha_inscripcion=date(2026, 1, 31),
+            fecha_vigencia=date(2026, 1, 31),
+            fecha_cancelacion=date(2026, 2, 28),
+            tarjeta=tarjeta,
+        )
+        cambio = CambioPlan.objects.create(
+            suscripcion=suscripcion,
+            plan=plan_siguiente,
+            fecha_aplicacion=date(2026, 2, 28),
+            nombre_titular='Usuario Demo',
+            tarjeta_ultimos4='4321',
+        )
+        por_aprobar = EstadoCobro.objects.create(nombre='Por aprobar')
+        cobro = Cobro.objects.create(
+            num_factura=1,
+            suscripcion=suscripcion,
+            fecha_cobro=date(2026, 2, 28),
+            estado_cobro=por_aprobar,
+            tarjeta=tarjeta,
+            monto=20,
+            fecha_hora_creacion=timezone.make_aware(
+                datetime(2026, 2, 28, 12, 0, 0),
+            ),
+            cambio_plan=cambio,
+        )
+
+        resultado = procesar_cobros_demo(
+            ahora=timezone.make_aware(datetime(2026, 2, 28, 12, 0, 6)),
+        )
+
+        self.assertEqual(
+            resultado,
+            {'creados': 0, 'aprobados': 0, 'suscripciones_canceladas': 1},
+        )
+        cobro.refresh_from_db()
+        cambio.refresh_from_db()
+        suscripcion.refresh_from_db()
+        self.assertEqual(cobro.estado_cobro.nombre, 'Cancelado')
+        self.assertEqual(cambio.estado, CambioPlan.ESTADO_CANCELADO)
+        self.assertFalse(suscripcion.habilitado)
+        self.assertEqual(suscripcion.fecha_vigencia, date(2026, 1, 31))
 
     @override_settings(DEBUG=True)
     def test_cobro_se_crea_en_fecha_mensual_y_se_aprueba_a_los_cinco_segundos(self):
@@ -1207,7 +1417,10 @@ class ProcesamientoCobrosTests(TestCase):
 
         resultado_creacion = procesar_cobros_demo(ahora=hora_cobro)
 
-        self.assertEqual(resultado_creacion, {'creados': 1, 'aprobados': 0})
+        self.assertEqual(
+            resultado_creacion,
+            {'creados': 1, 'aprobados': 0, 'suscripciones_canceladas': 0},
+        )
         cobro = Cobro.objects.get(suscripcion=suscripcion)
         self.assertEqual(cobro.fecha_cobro, date(2026, 2, 28))
         self.assertEqual(cobro.tarjeta, suscripcion.tarjeta)
@@ -1222,7 +1435,10 @@ class ProcesamientoCobrosTests(TestCase):
             ahora=hora_cobro + timedelta(seconds=6),
         )
 
-        self.assertEqual(resultado_aprobacion, {'creados': 0, 'aprobados': 1})
+        self.assertEqual(
+            resultado_aprobacion,
+            {'creados': 0, 'aprobados': 1, 'suscripciones_canceladas': 0},
+        )
         cobro.refresh_from_db()
         self.assertEqual(cobro.estado_cobro.nombre, 'Aprobado')
         cambio.refresh_from_db()
@@ -1234,7 +1450,10 @@ class ProcesamientoCobrosTests(TestCase):
         siguiente_ciclo = procesar_cobros_demo(
             ahora=timezone.make_aware(datetime(2026, 3, 28, 12, 0, 0)),
         )
-        self.assertEqual(siguiente_ciclo, {'creados': 1, 'aprobados': 0})
+        self.assertEqual(
+            siguiente_ciclo,
+            {'creados': 1, 'aprobados': 0, 'suscripciones_canceladas': 0},
+        )
         cobro_siguiente = Cobro.objects.get(
             suscripcion=suscripcion,
             fecha_cobro=date(2026, 3, 28),
@@ -1580,7 +1799,10 @@ class HomeCarouselesTests(TestCase):
 
         respuesta_preferencias = self.client.post(
             reverse('cuenta'),
-            {'pais': '', 'idioma': ingles.pk},
+            {
+                'pais': '',
+                'idioma': ingles.pk,
+            },
         )
         self.assertRedirects(
             respuesta_preferencias,

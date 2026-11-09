@@ -1342,6 +1342,54 @@ def cerrar_otras_sesiones_view(request):
 
 
 @login_required(login_url='login')
+@require_POST
+def cancelar_suscripcion_view(request):
+    hoy = timezone.localdate()
+    with transaction.atomic():
+        suscripciones = list(
+            Suscripcion.objects.select_for_update()
+            .filter(usuario=request.user, habilitado=True)
+            .order_by('-fecha_inscripcion', '-pk')
+        )
+        suscripcion = next(
+            (
+                item for item in suscripciones
+                if suscripcion_activa(item, hoy)
+                and item.fecha_cancelacion is None
+            ),
+            None,
+        )
+        if suscripcion is None:
+            if any(item.fecha_cancelacion is not None for item in suscripciones):
+                messages.info(request, 'La cancelación de tu suscripción ya está programada.')
+            else:
+                messages.error(request, 'No tienes una suscripción activa para cancelar.')
+            return redirect(f'{reverse("cuenta")}?seccion=suscripcion')
+
+        fecha_cancelacion = calcular_proximo_cobro(suscripcion.fecha_vigencia)
+        if fecha_cancelacion is None:
+            messages.error(
+                request,
+                'No se puede programar la cancelación porque la suscripción no tiene fecha de vigencia.',
+            )
+            return redirect(f'{reverse("cuenta")}?seccion=suscripcion')
+
+        suscripcion.fecha_cancelacion = fecha_cancelacion
+        suscripcion.save(update_fields=['fecha_cancelacion'])
+        suscripcion.cambios_programados.filter(
+            estado=CambioPlan.ESTADO_PENDIENTE,
+        ).update(estado=CambioPlan.ESTADO_CANCELADO)
+
+    messages.success(
+        request,
+        'La suscripción seguirá activa hasta el '
+        f'{fecha_cancelacion:%d/%m/%Y} y se cancelará en esa fecha. '
+        'No se realizará un nuevo cobro.',
+    )
+    return redirect(f'{reverse("cuenta")}?seccion=suscripcion')
+
+
+@login_required(login_url='login')
 def editar_dato_cuenta_view(request, campo):
     if campo not in EditarCuentaForm.CAMPOS:
         messages.error(request, 'El dato solicitado no se puede editar.')

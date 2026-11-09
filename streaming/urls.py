@@ -12,6 +12,11 @@ urlpatterns = [
     path('perfiles/', views.perfiles_view, name='perfiles'),
     path('cuenta/', views.cuenta_view, name='cuenta'),
     path('cuenta/sesiones/cerrar-otras/', views.cerrar_otras_sesiones_view, name='cerrar_otras_sesiones'),
+    path(
+        'cuenta/suscripcion/cancelar/',
+        views.cancelar_suscripcion_view,
+        name='cancelar_suscripcion',
+    ),
     path('cuenta/editar/<slug:campo>/', views.editar_dato_cuenta_view, name='editar_dato_cuenta'),
     path('perfiles/crear/', views.crear_perfil_view, name='crear_perfil'),
     path('perfiles/<int:perfil_id>/configurar/', views.configurar_perfil_view, name='configurar_perfil'),

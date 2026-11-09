@@ -25,6 +25,40 @@
             flex-direction: column;
         }
 
+        h1,
+        h2,
+        h3,
+        h4,
+        h5,
+        h6 {
+            color: #fff;
+        }
+
+        form label,
+        form legend,
+        form .form-label,
+        form .form-check-label,
+        form .form-text,
+        form .text-secondary,
+        form .text-muted {
+            color: #fff !important;
+        }
+
+        form .form-control,
+        form .form-select {
+            color: #fff;
+        }
+
+        form .form-control::placeholder {
+            color: rgba(255, 255, 255, 0.75);
+            opacity: 1;
+        }
+
+        form .form-select option {
+            color: #fff;
+            background-color: #212529;
+        }
+
         .navbar-netflix {
             background-color: rgba(20, 20, 20);
             transition: background-color 0.4s ease;
@@ -691,28 +725,22 @@
                 <div class="col-6 col-md-3">
                     <ul class="list-unstyled">
                         <li class="mb-2"><a href="#">Preguntas frecuentes</a></li>
-                        <li class="mb-2"><a href="#">Inversores</a></li>
                         <li class="mb-2"><a href="#">Formas de ver</a></li>
                     </ul>
                 </div>
                 <div class="col-6 col-md-3">
                     <ul class="list-unstyled">
-                        <li class="mb-2"><a href="#">Centro de ayuda</a></li>
-                        <li class="mb-2"><a href="#">Empleo</a></li>
                         <li class="mb-2"><a href="{% url 'cuenta' %}?seccion=mas-info">Términos de uso</a></li>
                     </ul>
                 </div>
                 <div class="col-6 col-md-3">
                     <ul class="list-unstyled">
                         <li class="mb-2"><a href="{% url 'cuenta' %}">Cuenta</a></li>
-                        <li class="mb-2"><a href="#">Canjear tarjetas</a></li>
                         <li class="mb-2"><a href="{% url 'cuenta' %}?seccion=mas-info">Privacidad</a></li>
                     </ul>
                 </div>
                 <div class="col-6 col-md-3">
                     <ul class="list-unstyled">
-                        <li class="mb-2"><a href="#">Prensa</a></li>
-                        <li class="mb-2"><a href="#">Comprar tarjetas</a></li>
                         <li class="mb-2"><a href="#">Contáctanos</a></li>
                     </ul>
                 </div>

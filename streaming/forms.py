@@ -158,6 +158,13 @@ class EditarCuentaForm(forms.Form):
             raise ValueError('El dato de cuenta solicitado no es editable.')
         self.usuario = usuario
         self.campo = campo
+        self.fields['current_password'] = forms.CharField(
+            label='Contraseña actual',
+            strip=False,
+            widget=forms.PasswordInput(attrs={
+                'autocomplete': 'current-password',
+            }),
+        )
         if campo == 'username':
             modelo = Usuario._meta.get_field('username')
             self.fields[campo] = forms.CharField(
@@ -184,13 +191,6 @@ class EditarCuentaForm(forms.Form):
                 }),
             )
         else:
-            self.fields['current_password'] = forms.CharField(
-                label='Contraseña vigente',
-                strip=False,
-                widget=forms.PasswordInput(attrs={
-                    'autocomplete': 'current-password',
-                }),
-            )
             self.fields['new_password'] = forms.CharField(
                 label='Nueva contraseña',
                 strip=False,
@@ -230,11 +230,12 @@ class EditarCuentaForm(forms.Form):
 
     def clean(self):
         cleaned_data = super().clean()
+        if not self.usuario.check_password(cleaned_data.get('current_password', '')):
+            self.add_error('current_password', 'La contraseña vigente no es correcta.')
+
         if self.campo != 'password':
             return cleaned_data
 
-        if not self.usuario.check_password(cleaned_data.get('current_password', '')):
-            self.add_error('current_password', 'La contraseña vigente no es correcta.')
         if cleaned_data.get('new_password') != cleaned_data.get('confirm_password'):
             self.add_error(
                 'confirm_password',

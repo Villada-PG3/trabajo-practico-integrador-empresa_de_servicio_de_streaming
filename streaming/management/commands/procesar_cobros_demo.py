@@ -28,10 +28,12 @@ class Command(BaseCommand):
 
         while True:
             resultado = procesar_cobros_demo()
-            if resultado['creados'] or resultado['aprobados']:
+            if any(resultado.values()):
                 self.stdout.write(
                     f"Cobros creados: {resultado['creados']}; "
-                    f"aprobados: {resultado['aprobados']}."
+                    f"aprobados: {resultado['aprobados']}; "
+                    f"suscripciones canceladas: "
+                    f"{resultado['suscripciones_canceladas']}."
                 )
             if not options['watch']:
                 break

@@ -38,14 +38,7 @@ def suscripcion_activa(suscripcion, hoy=None):
         return True
 
     hoy = hoy or timezone.localdate()
-    fecha_siguiente_cobro = calcular_proximo_cobro(
-        suscripcion.fecha_vigencia,
-    )
-    return (
-        fecha_siguiente_cobro is not None
-        and fecha_siguiente_cobro <= suscripcion.fecha_cancelacion
-        and hoy <= suscripcion.fecha_cancelacion
-    )
+    return hoy < suscripcion.fecha_cancelacion
 
 
 def fecha_inicio_suscripcion(usuario, hoy=None):
@@ -128,6 +121,7 @@ def procesar_cobros_demo(ahora=None):
     )
 
     aprobados = 0
+    cancelados = 0
     cobros_pendientes = list(
         Cobro.objects.select_for_update()
         .filter(
@@ -141,6 +135,24 @@ def procesar_cobros_demo(ahora=None):
         suscripcion = Suscripcion.objects.select_for_update().get(
             pk=cobro.suscripcion_id,
         )
+        if (
+            suscripcion.fecha_cancelacion is not None
+            and cobro.fecha_cobro >= suscripcion.fecha_cancelacion
+        ):
+            cancelado, _ = EstadoCobro.objects.get_or_create(
+                nombre='Cancelado',
+                defaults={'descripcion': 'Suscripción cancelada antes de la renovación.'},
+            )
+            cobro.estado_cobro = cancelado
+            cobro.save(update_fields=['estado_cobro'])
+            if (
+                cobro.cambio_plan_id
+                and cobro.cambio_plan.estado == CambioPlan.ESTADO_PENDIENTE
+            ):
+                cobro.cambio_plan.estado = CambioPlan.ESTADO_CANCELADO
+                cobro.cambio_plan.save(update_fields=['estado'])
+            continue
+
         cobro.estado_cobro = aprobado
         cobro.save(update_fields=['estado_cobro'])
         suscripcion.fecha_vigencia = cobro.fecha_cobro
@@ -162,6 +174,18 @@ def procesar_cobros_demo(ahora=None):
         .order_by('pk')
     )
     for suscripcion in suscripciones:
+        if (
+            suscripcion.fecha_cancelacion is not None
+            and hoy >= suscripcion.fecha_cancelacion
+        ):
+            suscripcion.habilitado = False
+            suscripcion.save(update_fields=['habilitado'])
+            suscripcion.cambios_programados.filter(
+                estado=CambioPlan.ESTADO_PENDIENTE,
+            ).update(estado=CambioPlan.ESTADO_CANCELADO)
+            cancelados += 1
+            continue
+
         fecha_cobro = calcular_proximo_cobro(suscripcion.fecha_vigencia)
         if fecha_cobro is None or fecha_cobro > hoy:
             continue
@@ -218,4 +242,8 @@ def procesar_cobros_demo(ahora=None):
         )
         creados += 1
 
-    return {'creados': creados, 'aprobados': aprobados}
+    return {
+        'creados': creados,
+        'aprobados': aprobados,
+        'suscripciones_canceladas': cancelados,
+    }

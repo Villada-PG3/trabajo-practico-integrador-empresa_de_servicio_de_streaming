@@ -53,10 +53,23 @@
         color: #bde7f5;
     }
 
+    .account-layout .form-select,
+    .account-layout .form-select option {
+        color: #fff;
+    }
+
+    .account-layout .form-select option {
+        background-color: #343a40;
+    }
+
+    .account-legal h2,
+    .account-legal h3 {
+        color: #fff;
+    }
+
     .account-legal h3 {
         margin-top: 1.75rem;
         font-size: 1.1rem;
-        color: #d7eff8;
     }
 
     .account-legal p {
@@ -131,7 +144,7 @@
         <div class="card bg-dark border-secondary p-3 p-md-4">
             {% if seccion_cuenta == 'usuario' %}
                 <section aria-labelledby="account-user-heading">
-                    <h2 class="h4 fw-semibold mb-3" id="account-user-heading">Usuario</h2>
+                    <h2 class="h4 fw-semibold mb-3 text-white" id="account-user-heading">Usuario</h2>
                     <div class="account-data-row">
                         <span class="account-data-label">Nombre de usuario</span>
                         <span class="account-data-value">{{ request.user.username }}</span>
@@ -172,7 +185,7 @@
 
                     <form method="post" class="mt-4">
                         {% csrf_token %}
-                        <h3 class="h6 fw-semibold mb-3">Preferencias de la cuenta</h3>
+                        <h3 class="h6 fw-semibold mb-3 text-white">Preferencias de la cuenta</h3>
                         <div class="row g-3">
                             <div class="col-md-6">
                                 <label class="form-label" for="{{ form.pais.id_for_label }}">País</label>
@@ -196,7 +209,7 @@
                 </section>
             {% elif seccion_cuenta == 'suscripcion' %}
                 <section aria-labelledby="account-subscription-heading">
-                    <h2 class="h4 fw-semibold mb-3" id="account-subscription-heading">Suscripción</h2>
+                    <h2 class="h4 fw-semibold mb-3 text-white" id="account-subscription-heading">Suscripción</h2>
                     {% if suscripcion %}
                         <dl class="row mb-0">
                             <dt class="col-sm-5 text-white-50">Plan</dt>
@@ -225,8 +238,16 @@
                             <dt class="col-sm-5 text-white-50">Fecha de vigencia</dt>
                             <dd class="col-sm-7 account-subscription-value">{{ suscripcion.fecha_vigencia|date:"d/m/Y"|default:"No asignada" }}</dd>
 
-                            <dt class="col-sm-5 text-white-50">Próximo Cobro</dt>
-                            <dd class="col-sm-7 account-subscription-value">{{ proximo_cobro|date:"d/m/Y"|default:"No asignado" }}</dd>
+                            <dt class="col-sm-5 text-white-50">
+                                {% if suscripcion.fecha_cancelacion %}Fecha de cancelación{% else %}Próximo Cobro{% endif %}
+                            </dt>
+                            <dd class="col-sm-7 account-subscription-value">
+                                {% if suscripcion.fecha_cancelacion %}
+                                    {{ suscripcion.fecha_cancelacion|date:"d/m/Y" }}
+                                {% else %}
+                                    {{ proximo_cobro|date:"d/m/Y"|default:"No asignado" }}
+                                {% endif %}
+                            </dd>
 
                             <dt class="col-sm-5 text-white-50">Tarjeta asociada</dt>
                             <dd class="col-sm-7 account-subscription-value">
@@ -244,10 +265,32 @@
                                 se pondrá en vigencia en la fecha del próximo cobro:
                                 <strong>{{ cambio_plan_pendiente.fecha_aplicacion|date:"d/m/Y" }}</strong>.
                             </div>
+                        {% endif %}
+                        {% if suscripcion.fecha_cancelacion %}
+                            <div class="alert alert-warning mt-3 mb-0" role="status">
+                                {% if suscripcion.habilitado %}
+                                    Tu suscripción permanecerá activa hasta el
+                                    <strong>{{ suscripcion.fecha_cancelacion|date:"d/m/Y" }}</strong>.
+                                    No se realizará un nuevo cobro.
+                                {% else %}
+                                    Tu suscripción fue cancelada el
+                                    <strong>{{ suscripcion.fecha_cancelacion|date:"d/m/Y" }}</strong>.
+                                {% endif %}
+                            </div>
                         {% elif suscripcion.habilitado %}
                             <div class="text-end mt-4">
-                                <a class="btn btn-netflix"
-                                   href="{% url 'seleccionar_plan' %}?cambiar=1">Cambiar Plan</a>
+                                {% if not cambio_plan_pendiente %}
+                                    <a class="btn btn-netflix"
+                                       href="{% url 'seleccionar_plan' %}?cambiar=1">Cambiar Plan</a>
+                                {% endif %}
+                                <form method="post" action="{% url 'cancelar_suscripcion' %}"
+                                      class="d-inline"
+                                      onsubmit="return confirm('¿Quieres programar la cancelación de tu plan para la próxima fecha de cobro?');">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-outline-danger ms-2">
+                                        Cancelar Plan
+                                    </button>
+                                </form>
                             </div>
                         {% endif %}
                     {% else %}
@@ -256,10 +299,7 @@
                 </section>
             {% else %}
                 <section class="account-legal" aria-labelledby="account-legal-heading">
-                    <h2 class="h4 fw-semibold mb-2" id="account-legal-heading">Más información</h2>
-                    <div class="alert alert-warning small">
-                        Texto informativo inicial. Debe ser revisado y aprobado legalmente antes de publicarse como política oficial.
-                    </div>
+                    <h2 class="h4 fw-semibold mb-2 text-white" id="account-legal-heading">Más información</h2>
 
                     <h3>Términos de uso</h3>
                     <p>RedFlix permite acceder a un catálogo de entretenimiento sujeto a la disponibilidad del servicio, del título y de la suscripción vigente. La persona titular de la cuenta es responsable de mantener actualizados sus datos y proteger sus credenciales.</p>
@@ -281,7 +321,12 @@
                     <p>La plataforma puede requerir mantenimiento o experimentar interrupciones. Las funciones, interfaces y contenidos pueden modificarse para mantener y mejorar el servicio, sin perjuicio de los derechos que otorgue la normativa vigente.</p>
 
                     <h3>Contacto</h3>
-                    <p class="mb-0">Para consultas sobre la cuenta, la suscripción o los datos personales, utiliza los canales de contacto oficiales que RedFlix habilite para tu región.</p>
+                    <p>Estos datos de contacto son ficticios y se incluyen solo como ejemplo:</p>
+                    <ul class="mb-0">
+                        <li>Soporte: <a href="mailto:soporte@redflix.example">soporte@redflix.example</a></li>
+                        <li>Privacidad: <a href="mailto:privacidad@redflix.example">privacidad@redflix.example</a></li>
+                        <li>Teléfono de atención: 0800-RED-FLIX (ficticio)</li>
+                    </ul>
                 </section>
             {% endif %}
         </div>
