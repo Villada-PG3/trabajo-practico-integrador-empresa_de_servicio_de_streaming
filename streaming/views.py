@@ -32,7 +32,7 @@ from django.db.models import (
     Value,
     When,
 )
-from django.db.models.functions import Coalesce, NullIf, Trim
+from django.db.models.functions import Coalesce, Concat, NullIf, Trim
 from django.http import HttpResponse, JsonResponse
 from django.contrib.sessions.models import Session
 from django.shortcuts import redirect, render
@@ -76,6 +76,7 @@ from .models import (
     Suscripcion,
     Tarjeta,
     Titulo,
+    TituloRolElenco,
 )
 
 LIMITE_TITULOS_CARRUSEL = 30
@@ -811,6 +812,7 @@ def buscar_titulos_view(request):
     if len(consulta) < 2:
         return JsonResponse({'resultados': []})
 
+    tipo_busqueda = request.GET.get('tipo', 'titulos')
     perfil_activo = get_active_profile(request)
     if perfil_activo is None:
         return JsonResponse(
@@ -843,7 +845,6 @@ def buscar_titulos_view(request):
         )
         .annotate(nombre_busqueda=nombre_titulo)
         .annotate(imagen_busqueda=Subquery(imagenes.values('imagen')[:1]))
-        .filter(nombre_busqueda__icontains=consulta)
         .select_related('tipo_titulo')
         .distinct()
         .order_by('nombre_busqueda', 'pk')
@@ -861,6 +862,34 @@ def buscar_titulos_view(request):
             prefetch_contenidos_detalle(),
         )
     )
+    if tipo_busqueda == 'elenco':
+        elenco_coincidente = TituloRolElenco.objects.annotate(
+            nombre_completo=Concat(
+                'rol_elenco__elenco__nombre',
+                Value(' '),
+                'rol_elenco__elenco__apellido',
+                output_field=CharField(),
+            ),
+        ).filter(nombre_completo__icontains=consulta).select_related(
+            'rol_elenco__elenco',
+        )
+        titulos = titulos.annotate(
+            elenco_busqueda=Concat(
+                'titulo_rol_elencos__rol_elenco__elenco__nombre',
+                Value(' '),
+                'titulo_rol_elencos__rol_elenco__elenco__apellido',
+                output_field=CharField(),
+            ),
+        ).filter(elenco_busqueda__icontains=consulta).prefetch_related(
+            Prefetch(
+                'titulo_rol_elencos',
+                queryset=elenco_coincidente,
+                to_attr='relaciones_elenco_coincidente',
+            ),
+        )
+    else:
+        titulos = titulos.filter(nombre_busqueda__icontains=consulta)
+
     titulos_guardados = set(
         Porver.objects.filter(
             perfil_titulo__perfil=perfil_activo,
@@ -897,6 +926,14 @@ def buscar_titulos_view(request):
                 'puntuacion_perfil': str(puntuaciones_perfil.get(titulo.pk) or ''),
                 'descripcion': titulo.descripcion_mostrar or '',
                 'elenco': titulo.elenco_detalle,
+                'elencos_coincidentes': list(dict.fromkeys(
+                    f'{relacion.rol_elenco.elenco.nombre} {relacion.rol_elenco.elenco.apellido}'
+                    for relacion in getattr(
+                        titulo,
+                        'relaciones_elenco_coincidente',
+                        [],
+                    )
+                )) if tipo_busqueda == 'elenco' else [],
                 'categorias': titulo.categorias_detalle,
                 'edad': titulo.clasificacion_edad,
                 'contenidos': titulo.contenidos_detalle,

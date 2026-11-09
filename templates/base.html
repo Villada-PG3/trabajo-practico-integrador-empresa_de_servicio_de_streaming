@@ -419,6 +419,26 @@
             padding: 2rem clamp(1rem, 4vw, 3rem) 4rem;
         }
 
+        .live-search-modes {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+
+        .live-search-mode {
+            padding: 0.4rem 1rem;
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            border-radius: 999px;
+            background: transparent;
+            color: rgba(255, 255, 255, 0.75);
+        }
+
+        .live-search-mode[aria-pressed="true"] {
+            border-color: #fff;
+            background: #fff;
+            color: #141414;
+        }
+
         .live-search-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr));
@@ -642,6 +662,12 @@
                 <div>
                     <h1 class="h2 fw-bold mb-1">Resultados de búsqueda</h1>
                     <p class="text-white-50 mb-0" data-live-search-summary></p>
+                    <div class="live-search-modes" role="group" aria-label="Tipo de búsqueda">
+                        <button class="live-search-mode" type="button" data-search-mode="titulos"
+                                aria-pressed="true">Títulos</button>
+                        <button class="live-search-mode" type="button" data-search-mode="elenco"
+                                aria-pressed="false">Elenco</button>
+                    </div>
                 </div>
             </div>
             <div class="live-search-grid" data-live-search-grid></div>
@@ -751,9 +777,11 @@
             const searchGrid = searchPage.querySelector('[data-live-search-grid]');
             const searchSummary = searchPage.querySelector('[data-live-search-summary]');
             const searchEmpty = searchPage.querySelector('[data-live-search-empty]');
+            const searchModeButtons = [...searchPage.querySelectorAll('[data-search-mode]')];
             const pageContent = document.querySelector('[data-page-content]');
             let searchTimer;
             let searchRequest;
+            let searchMode = 'titulos';
 
             const showPageContent = () => {
                 searchPage.classList.add('d-none');
@@ -766,6 +794,10 @@
                 openButton.setAttribute('aria-expanded', 'false');
                 input.value = '';
                 searchRequest?.abort();
+                searchMode = 'titulos';
+                searchModeButtons.forEach((button) => {
+                    button.setAttribute('aria-pressed', String(button.dataset.searchMode === searchMode));
+                });
                 showPageContent();
             };
 
@@ -805,6 +837,7 @@
                     try {
                         const url = new URL(titleSearchForm.dataset.searchUrl, window.location.origin);
                         url.searchParams.set('q', query);
+                        url.searchParams.set('tipo', searchMode);
                         const response = await fetch(url, {
                             headers: { 'Accept': 'application/json' },
                             credentials: 'same-origin',
@@ -870,6 +903,14 @@
                             const tipo = document.createElement('span');
                             tipo.className = 'small text-white-50';
                             tipo.textContent = resultado.tipo;
+                            const metadata = [tipo];
+                            if (searchMode === 'elenco' && resultado.elencos_coincidentes.length) {
+                                const elencoCoincidente = document.createElement('span');
+                                elencoCoincidente.className = 'small text-white-50';
+                                elencoCoincidente.textContent =
+                                    ` | ${resultado.elencos_coincidentes.join(', ')}`;
+                                metadata.push(elencoCoincidente);
+                            }
                             const detailsButton = document.createElement('button');
                             detailsButton.type = 'button';
                             detailsButton.className = 'title-details-button';
@@ -932,12 +973,14 @@
                             toggleForm.append(csrfInput, nextInput, toggleButton);
                             poster.append(detailsButton);
                             poster.append(toggleForm);
-                            card.append(poster, nombre, tipo);
+                            card.append(poster, nombre, ...metadata);
                             searchGrid.append(card);
                         });
-                        searchSummary.textContent = `${data.resultados.length} título${data.resultados.length === 1 ? '' : 's'} para “${query}”`;
-                        searchEmpty.textContent = data.resultados.length
-                            ? ''
+                        searchSummary.textContent = searchMode === 'elenco'
+                            ? `${data.resultados.length} título${data.resultados.length === 1 ? '' : 's'} para el elenco “${query}”`
+                            : `${data.resultados.length} título${data.resultados.length === 1 ? '' : 's'} para “${query}”`;
+                        searchEmpty.textContent = searchMode === 'elenco'
+                            ? 'No se encontraron títulos para ese elenco.'
                             : 'No se encontraron títulos coincidentes.';
                         searchEmpty.classList.toggle('d-none', data.resultados.length > 0);
                     } catch (error) {
@@ -949,6 +992,18 @@
                         }
                     }
                 }, 200);
+            });
+            searchModeButtons.forEach((button) => {
+                button.addEventListener('click', () => {
+                    searchMode = button.dataset.searchMode;
+                    searchModeButtons.forEach((modeButton) => {
+                        modeButton.setAttribute(
+                            'aria-pressed',
+                            String(modeButton === button),
+                        );
+                    });
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                });
             });
 
             searchGrid.addEventListener('submit', async (event) => {

@@ -1399,6 +1399,47 @@ class HomeCarouselesTests(TestCase):
             )
         return titulo
 
+    def test_busqueda_por_elenco_devuelve_titulos_del_elenco_coincidente(self):
+        titulo = self.crear_titulo(
+            'Historia con actriz',
+            self.pelicula,
+            con_contenido=True,
+        )
+        titulo_restringido = self.crear_titulo(
+            'Historia para adultos',
+            self.pelicula,
+            con_contenido=True,
+            edad_minima=18,
+        )
+        actriz = Elenco.objects.create(
+            pais=self.pais,
+            nombre='María',
+            apellido='De la Cruz',
+        )
+        rol = Rol.objects.create(nombre='Actriz')
+        rol_elenco = RolElenco.objects.create(rol=rol, elenco=actriz)
+        TituloRolElenco.objects.create(titulo=titulo, rol_elenco=rol_elenco)
+        TituloRolElenco.objects.create(titulo=titulo_restringido, rol_elenco=rol_elenco)
+        usuario = Usuario.objects.create_user(
+            username='busqueda-elenco@example.com',
+            email='busqueda-elenco@example.com',
+            password='UnaClave-larga-2026!',
+        )
+        self.autenticar_con_perfil(usuario, edad_max=17)
+
+        respuesta = self.client.get(
+            reverse('buscar_titulos'),
+            {'q': 'maría de', 'tipo': 'elenco'},
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+        resultados = respuesta.json()['resultados']
+        self.assertEqual([resultado['id'] for resultado in resultados], [titulo.pk])
+        self.assertEqual(
+            resultados[0]['elencos_coincidentes'],
+            ['María De la Cruz'],
+        )
+
     def agregar_imagen_titulo(self, titulo, nombre, archivo):
         return IdiomaTitulo.objects.create(
             nombre=nombre,
