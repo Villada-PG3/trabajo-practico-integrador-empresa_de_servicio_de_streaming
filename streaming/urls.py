@@ -23,6 +23,16 @@ urlpatterns = [
         name='reproducir_video',
     ),
     path(
+        'titulos/<int:titulo_id>/contenidos/<int:contenido_id>/videos/<int:video_id>/siguiente/',
+        views.siguiente_episodio_view,
+        name='siguiente_episodio',
+    ),
+    path(
+        'titulos/<int:titulo_id>/contenidos/<int:contenido_id>/videos/<int:video_id>/visualizacion/',
+        views.registrar_visualizacion_view,
+        name='registrar_visualizacion',
+    ),
+    path(
         'titulos/<int:titulo_id>/reproducir/<int:video_id>/subtitulos/<int:subtitulo_id>.vtt',
         views.servir_subtitulo_view,
         name='servir_subtitulo',

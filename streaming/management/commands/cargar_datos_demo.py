@@ -508,6 +508,26 @@ class Command(BaseCommand):
                                 ),
                             },
                         )
+                    if titulo == serie:
+                        idioma_episodio_espanol, _ = (
+                            IdiomaContenido.objects.get_or_create(
+                                idioma=espanol,
+                                contenido=episodio_demo,
+                            )
+                        )
+                        video_episodio, _ = (
+                            CalidadIdiomaContenido.objects.get_or_create(
+                                idioma_contenido=idioma_episodio_espanol,
+                                calidad=calidad_hd,
+                                defaults={
+                                    'archivo_legacy': b'',
+                                    'archivo': 'videos/hd.mp4',
+                                },
+                            )
+                        )
+                        if not video_episodio.archivo:
+                            video_episodio.archivo = 'videos/hd.mp4'
+                            video_episodio.save(update_fields=['archivo'])
 
         plan_basico, _ = Plan.objects.get_or_create(
             nombre='Plan Demo Basico',

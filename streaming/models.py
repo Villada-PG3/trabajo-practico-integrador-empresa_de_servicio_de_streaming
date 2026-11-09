@@ -226,6 +226,13 @@ class PerfilContenido(models.Model):
     # Cuanto vio un perfil un determinado contenido
     perfil = models.ForeignKey('Perfil', on_delete=models.CASCADE, related_name='perfil_contenidos')
     contenido = models.ForeignKey(Contenido, on_delete=models.CASCADE, related_name='perfil_contenidos')
+    video = models.ForeignKey(
+        CalidadIdiomaContenido,
+        on_delete=models.CASCADE,
+        related_name='perfil_visualizaciones',
+        blank=True,
+        null=True,
+    )
     segundos_vistos = models.IntegerField(default=0)
     ultima_visualizacion = models.DateTimeField()
 

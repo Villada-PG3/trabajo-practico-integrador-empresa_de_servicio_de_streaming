@@ -232,6 +232,10 @@
         display: none;
     }
 
+    .title-carousel--continue .title-carousel-track {
+        padding-bottom: 12rem;
+    }
+
     .title-card {
         position: relative;
         flex: 0 0 var(--title-card-width);
@@ -470,6 +474,10 @@
             scroll-padding-inline: 1rem;
         }
 
+        .title-carousel--continue .title-carousel-track {
+            padding-bottom: 14rem;
+        }
+
         .title-poster {
             height: clamp(8rem, 49vw, 12.75rem);
         }
@@ -623,37 +631,9 @@
         <h2 class="h3 fw-bold mb-0">Catálogo de: {{ categoria_seleccionada.nombre }}</h2>
     </div>
     {% endif %}
-    {% if not user.is_authenticated %}
-        {% with populares=carruseles.0 %}
-        <section class="popular-list" aria-labelledby="popular-list-title">
-            <h2 class="h3 fw-bold mb-4" id="popular-list-title">{{ populares.etiqueta }}</h2>
-            <div class="popular-grid">
-                {% for titulo in populares.titulos %}
-                <article class="popular-card">
-                    <div class="popular-poster">
-                        {% with imagen=titulo.imagenes_catalogo|first %}
-                            {% if imagen and imagen.imagen %}
-                                <img class="popular-poster-image" src="{{ imagen.imagen.url }}" alt="{{ titulo.nombre_mostrar }}" loading="lazy">
-                            {% else %}
-                                <span class="popular-poster-mark" aria-hidden="true">{{ titulo.nombre_mostrar|slice:":1"|upper }}</span>
-                            {% endif %}
-                        {% endwith %}
-                        <span class="popular-poster-rank" aria-label="Puesto {{ forloop.counter }}">{{ forloop.counter }}</span>
-                    </div>
-                    <div class="pt-2">
-                        <h3 class="title-card-name h6 fw-semibold mb-1">
-                            {{ titulo.nombre_mostrar }}
-                            {% include "partials/promedio_estrellas.html" with titulo=titulo %}
-                        </h3>
-                    </div>
-                </article>
-                {% endfor %}
-            </div>
-        </section>
-        {% endwith %}
-    {% else %}
     {% for carrusel in carruseles %}
-    <section class="title-carousel" aria-labelledby="carousel-title-{{ forloop.counter }}">
+    <section class="title-carousel{% if carrusel.es_seguir_viendo %} title-carousel--continue{% endif %}"
+             aria-labelledby="carousel-title-{{ forloop.counter }}">
         <div class="title-carousel-heading px-4">
             <h2 class="h3 fw-bold mb-0" id="carousel-title-{{ forloop.counter }}">{{ carrusel.etiqueta }}</h2>
             <div class="title-carousel-controls" aria-label="Controles del carrusel">
@@ -675,8 +655,8 @@
                 <div class="title-poster">
                     {% if user.is_authenticated %}
                         <a class="title-poster-play-link"
-                           href="{% url 'reproducir_titulo' titulo.pk %}"
-                           aria-label="Reproducir {{ titulo.nombre_mostrar }}"></a>
+                           href="{% if carrusel.es_seguir_viendo %}{{ titulo.url_seguir_viendo }}{% else %}{% url 'reproducir_titulo' titulo.pk %}{% endif %}"
+                           aria-label="{% if carrusel.es_seguir_viendo %}Seguir viendo{% else %}Reproducir{% endif %} {{ titulo.nombre_mostrar }}"></a>
                     {% endif %}
                     {% with imagen=titulo.imagenes_catalogo|first %}
                         {% if imagen and imagen.imagen %}
@@ -728,10 +708,14 @@
                 </div>
                 <div class="pt-2">
                     <h3 class="title-card-name h6 fw-semibold mb-1">
-                        <a class="text-white text-decoration-none"
-                           href="{% url 'reproducir_titulo' titulo.pk %}">
+                        {% if user.is_authenticated %}
+                            <a class="text-white text-decoration-none"
+                               href="{% if carrusel.es_seguir_viendo %}{{ titulo.url_seguir_viendo }}{% else %}{% url 'reproducir_titulo' titulo.pk %}{% endif %}">
+                                {{ titulo.nombre_mostrar }}
+                            </a>
+                        {% else %}
                             {{ titulo.nombre_mostrar }}
-                        </a>
+                        {% endif %}
                         {% include "partials/promedio_estrellas.html" with titulo=titulo %}
                     </h3>
                     <p class="title-card-type small text-white-50 mb-1">
@@ -742,6 +726,9 @@
                             <span class="px-1" aria-hidden="true">|</span> {{ titulo.temporadas }} temporada{{ titulo.temporadas|pluralize:"s" }}
                         {% endif %}
                     </p>
+                    {% if carrusel.es_seguir_viendo %}
+                        <p class="small text-white-50 mb-1">{{ titulo.contenido_seguir_viendo.nombre }}</p>
+                    {% endif %}
                     {% if titulo.clasificacion_edad %}
                         <p class="small text-white-50 mb-1">
                             Clasificación: <span class="badge rounded-pill text-bg-secondary">{{ titulo.clasificacion_edad }}</span>
@@ -760,7 +747,6 @@
         </div>
     </section>
     {% endfor %}
-    {% endif %}
 </section>
 {% endif %}
 
@@ -1206,7 +1192,9 @@
                 titleDetails.querySelector('[data-title-details-close]').focus();
         });
 
-        const tituloRegreso = new URLSearchParams(window.location.search).get('titulo');
+        const parametrosInicio = new URLSearchParams(window.location.search);
+        const tituloRegreso = parametrosInicio.get('detalle')
+            || parametrosInicio.get('titulo');
         if (tituloRegreso && /^\d+$/.test(tituloRegreso)) {
             document.querySelector(
                 `[data-title-details-open][data-title-id="${tituloRegreso}"]`,

@@ -21,9 +21,7 @@ from django.db.models import (
     CharField,
     Count,
     Avg,
-    ExpressionWrapper,
     F,
-    FloatField,
     IntegerField,
     Max,
     OuterRef,
@@ -73,6 +71,7 @@ from .models import (
     Plan,
     PlanCalidad,
     Perfil,
+    PerfilContenido,
     PerfilTitulo,
     Porver,
     Precio,
@@ -533,10 +532,7 @@ def home(request):
 
     reproduccion_valida = Q(
         contenidos__duracion_segundos__gt=0,
-        contenidos__perfil_contenidos__segundos_vistos__gte=ExpressionWrapper(
-            F('contenidos__duracion_segundos') * 0.1,
-            output_field=FloatField(),
-        )
+        contenidos__perfil_contenidos__segundos_vistos__gte=10,
     )
     mas_reproducidos_query = Titulo.objects.filter(
         contenidos__isnull=False,
@@ -596,12 +592,78 @@ def home(request):
     asignar_textos_titulo(mas_reproducidos, getattr(request.user, 'idioma_id', None))
     if mas_reproducidos:
         carruseles.append({
-            'etiqueta': 'Más reproducidos' if request.user.is_authenticated else 'Populares',
+            'etiqueta': 'Más reproducidos',
             'titulos': mas_reproducidos,
             'mostrar_top': not request.user.is_authenticated,
         })
 
     if request.user.is_authenticated:
+        if perfil_activo is not None and not prefijo_tipo:
+            visualizaciones_en_curso = (
+                PerfilContenido.objects.filter(
+                    perfil=perfil_activo,
+                    contenido__duracion_segundos__gt=0,
+                    segundos_vistos__lt=F('contenido__duracion_segundos'),
+                    contenido__titulo__edad_minima__lte=perfil_activo.tipo_perfil.edad_max,
+                )
+                .select_related('contenido__titulo')
+                .order_by('-ultima_visualizacion', '-pk')
+            )
+            ultimas_por_titulo = {}
+            for visualizacion in visualizaciones_en_curso:
+                titulo_id = visualizacion.contenido.titulo_id
+                if titulo_id not in ultimas_por_titulo:
+                    ultimas_por_titulo[titulo_id] = visualizacion
+                if len(ultimas_por_titulo) >= LIMITE_TITULOS_CARRUSEL:
+                    break
+
+            if ultimas_por_titulo:
+                titulos_seguir_viendo = list(
+                    Titulo.objects.filter(pk__in=ultimas_por_titulo)
+                    .select_related('tipo_titulo')
+                    .prefetch_related(
+                        'titulo_categorias__categoria',
+                        prefetch_contenidos_detalle(),
+                        imagenes_catalogo,
+                        textos_catalogo,
+                    )
+                )
+                titulos_seguir_viendo.sort(
+                    key=lambda titulo: (
+                        ultimas_por_titulo[titulo.pk].ultima_visualizacion,
+                        ultimas_por_titulo[titulo.pk].pk,
+                    ),
+                    reverse=True,
+                )
+                for titulo in titulos_seguir_viendo:
+                    visualizacion = ultimas_por_titulo[titulo.pk]
+                    titulo.contenido_seguir_viendo = visualizacion.contenido
+                    titulo.url_seguir_viendo = reverse(
+                        'reproducir_contenido',
+                        args=[titulo.pk, visualizacion.contenido_id],
+                    )
+                    titulo.porcentaje_seguir_viendo = min(
+                        100,
+                        int(
+                            visualizacion.segundos_vistos
+                            * 100
+                            / visualizacion.contenido.duracion_segundos
+                        ),
+                    )
+                titulos_seguir_viendo = marcar_estado_mi_lista(
+                    ordenar_categorias_titulo(titulos_seguir_viendo),
+                    titulos_guardados,
+                )
+                asignar_textos_titulo(
+                    titulos_seguir_viendo,
+                    getattr(request.user, 'idioma_id', None),
+                )
+                carruseles.append({
+                    'etiqueta': 'Seguir viendo',
+                    'titulos': titulos_seguir_viendo,
+                    'es_seguir_viendo': True,
+                })
+
         if perfil_activo is not None and not prefijo_tipo:
             lista_por_ver = Porver.objects.filter(
                 perfil_titulo__perfil=perfil_activo,
@@ -1099,6 +1161,19 @@ def reproducir_video_view(request, titulo_id, video_id):
     if not video.archivo.storage.exists(video.archivo.name):
         raise Http404('El archivo de video no está disponible.')
 
+    ultima_visualizacion = PerfilContenido.objects.filter(
+        perfil=perfil_activo,
+        contenido=contenido,
+    ).order_by('-ultima_visualizacion', '-pk').first()
+    segundos_reanudacion = (
+        ultima_visualizacion.segundos_vistos if ultima_visualizacion else 0
+    )
+    if (
+        contenido.duracion_segundos is not None
+        and segundos_reanudacion >= contenido.duracion_segundos
+    ):
+        segundos_reanudacion = 0
+
     subtitulos = obtener_subtitulos_reproduccion(titulo, contenido)
     for subtitulo in subtitulos:
         idioma_normalizado = unicodedata.normalize(
@@ -1121,8 +1196,210 @@ def reproducir_video_view(request, titulo_id, video_id):
         'video': video,
         'titulo': titulo,
         'contenido': contenido,
+        'segundos_reanudacion': segundos_reanudacion,
+        'siguiente_episodio_url': (
+            reverse(
+                'siguiente_episodio',
+                args=[titulo.pk, contenido.pk, video.pk],
+            )
+            if titulo.tipo_titulo.nombre.casefold().startswith('ser')
+            and contenido.seccion >= 1
+            else ''
+        ),
         'subtitulos': subtitulos,
         'pagina_reproduccion': True,
+    })
+
+
+@login_required
+@require_GET
+@never_cache
+def siguiente_episodio_view(request, titulo_id, contenido_id, video_id):
+    perfil_activo = get_active_profile(request)
+    if perfil_activo is None:
+        return JsonResponse(
+            {'error': 'Selecciona un perfil activo antes de continuar.'},
+            status=403,
+        )
+
+    titulo = Titulo.objects.filter(
+        pk=titulo_id,
+        edad_minima__lte=perfil_activo.tipo_perfil.edad_max,
+        tipo_titulo__nombre__istartswith='ser',
+    ).first()
+    if titulo is None:
+        raise Http404('No se encontró una serie disponible para este perfil.')
+
+    contenido_actual = Contenido.objects.filter(
+        pk=contenido_id,
+        titulo=titulo,
+        seccion__gte=1,
+    ).first()
+    video_actual = CalidadIdiomaContenido.objects.filter(
+        pk=video_id,
+        idioma_contenido__contenido=contenido_actual,
+        archivo__gt='',
+    ).select_related('idioma_contenido__idioma', 'calidad').first()
+    if contenido_actual is None or video_actual is None:
+        raise Http404('No se encontró el episodio reproducido.')
+    if not video_actual.archivo.storage.exists(video_actual.archivo.name):
+        raise Http404('El video del episodio no está disponible.')
+
+    suscripcion = obtener_suscripcion_activa(request.user)
+    if suscripcion is None:
+        return JsonResponse(
+            {'error': 'Necesitas una suscripción activa para continuar.'},
+            status=403,
+        )
+    if not PlanCalidad.objects.filter(
+        plan=suscripcion.plan,
+        calidad=video_actual.calidad,
+    ).exists():
+        raise Http404('La calidad seleccionada no está disponible en tu plan.')
+    calidades_permitidas = PlanCalidad.objects.filter(
+        plan=suscripcion.plan,
+    ).values_list('calidad_id', flat=True)
+    contenidos_siguientes = Contenido.objects.filter(
+        titulo=titulo,
+    ).filter(
+        Q(
+            seccion=contenido_actual.seccion,
+            orden__gt=contenido_actual.orden,
+        )
+        | Q(
+            seccion=contenido_actual.seccion,
+            orden=contenido_actual.orden,
+            pk__gt=contenido_actual.pk,
+        )
+        | Q(seccion__gt=contenido_actual.seccion)
+    ).order_by('seccion', 'orden', 'pk')
+    video_siguiente = None
+    for contenido_siguiente in contenidos_siguientes:
+        opciones = CalidadIdiomaContenido.objects.filter(
+            idioma_contenido__contenido=contenido_siguiente,
+            archivo__gt='',
+            calidad_id__in=calidades_permitidas,
+        ).select_related('idioma_contenido__idioma', 'calidad').order_by(
+            'calidad__nombre',
+            'pk',
+        )
+        for opcion in opciones:
+            if not opcion.archivo.storage.exists(opcion.archivo.name):
+                continue
+            video_siguiente = opcion
+            if (
+                opcion.idioma_contenido.idioma_id
+                == video_actual.idioma_contenido.idioma_id
+                and opcion.calidad_id == video_actual.calidad_id
+            ):
+                break
+        if video_siguiente is not None:
+            break
+
+    if video_siguiente is None:
+        return JsonResponse({'url': None})
+    return JsonResponse({
+        'url': reverse(
+            'reproducir_video',
+            args=[titulo.pk, video_siguiente.pk],
+        ),
+    })
+
+
+@login_required
+@require_POST
+@never_cache
+def registrar_visualizacion_view(request, titulo_id, contenido_id, video_id):
+    perfil_activo = get_active_profile(request)
+    if perfil_activo is None:
+        return JsonResponse(
+            {'error': 'Selecciona un perfil activo antes de guardar el progreso.'},
+            status=403,
+        )
+
+    titulo = Titulo.objects.filter(
+        pk=titulo_id,
+        edad_minima__lte=perfil_activo.tipo_perfil.edad_max,
+    ).first()
+    if titulo is None:
+        raise Http404('No se encontró un título disponible para este perfil.')
+
+    contenido = Contenido.objects.filter(
+        pk=contenido_id,
+        titulo=titulo,
+    ).first()
+    video = CalidadIdiomaContenido.objects.filter(
+        pk=video_id,
+        idioma_contenido__contenido=contenido,
+        archivo__gt='',
+    ).select_related('calidad').first() if contenido is not None else None
+    if video is None:
+        raise Http404('No se encontró el video solicitado para este contenido.')
+
+    suscripcion = obtener_suscripcion_activa(request.user)
+    if suscripcion is None:
+        return JsonResponse(
+            {'error': 'Necesitas una suscripción activa para guardar el progreso.'},
+            status=403,
+        )
+    if not PlanCalidad.objects.filter(
+        plan=suscripcion.plan,
+        calidad=video.calidad,
+    ).exists():
+        raise Http404('La calidad seleccionada no está disponible en tu plan.')
+
+    try:
+        segundos_vistos = int(request.POST.get('segundos_vistos', ''))
+    except (TypeError, ValueError):
+        return JsonResponse(
+            {'error': 'La posición de reproducción debe ser un número entero.'},
+            status=400,
+        )
+    if segundos_vistos < 0 or (
+        contenido.duracion_segundos is not None
+        and segundos_vistos > contenido.duracion_segundos
+    ):
+        return JsonResponse(
+            {'error': 'La posición de reproducción está fuera de los límites del contenido.'},
+            status=400,
+        )
+
+    ahora = timezone.now()
+    visualizacion_id = request.POST.get('visualizacion_id')
+    if visualizacion_id:
+        try:
+            visualizacion_id = int(visualizacion_id)
+        except ValueError:
+            return JsonResponse(
+                {'error': 'La visualización indicada no es válida.'},
+                status=400,
+            )
+        visualizacion = PerfilContenido.objects.filter(
+            pk=visualizacion_id,
+            perfil=perfil_activo,
+            contenido=contenido,
+            video=video,
+        ).first()
+        if visualizacion is None:
+            raise Http404('No se encontró la visualización solicitada.')
+        PerfilContenido.objects.filter(pk=visualizacion.pk).update(
+            segundos_vistos=segundos_vistos,
+            ultima_visualizacion=ahora,
+        )
+        visualizacion.refresh_from_db(fields=['segundos_vistos'])
+    else:
+        visualizacion = PerfilContenido.objects.create(
+            perfil=perfil_activo,
+            contenido=contenido,
+            video=video,
+            segundos_vistos=segundos_vistos,
+            ultima_visualizacion=ahora,
+        )
+
+    return JsonResponse({
+        'visualizacion_id': visualizacion.pk,
+        'segundos_vistos': visualizacion.segundos_vistos,
+        'ultima_visualizacion': ahora.isoformat(),
     })
 
 

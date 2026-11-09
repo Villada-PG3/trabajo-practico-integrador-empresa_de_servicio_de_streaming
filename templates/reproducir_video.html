@@ -188,12 +188,15 @@
 <main class="container-fluid py-4">
     <div class="ratio ratio-16x9 video-player" data-video-player>
         <a class="video-back"
-           href="{% url 'home' %}?titulo={{ titulo.pk }}"
+           href="{% url 'home' %}?detalle={{ titulo.pk }}"
            aria-label="Volver a Inicio con el detalle de {{ titulo.nombre_original }}"
            title="Volver a Inicio">
             <i class="bi bi-arrow-left" aria-hidden="true"></i>
         </a>
-        <video autoplay playsinline preload="metadata" data-video>
+        <video autoplay playsinline preload="metadata" data-video
+               data-progress-url="{% url 'registrar_visualizacion' titulo.pk contenido.pk video.pk %}"
+               data-next-episode-url="{{ siguiente_episodio_url }}"
+               data-resume-seconds="{{ segundos_reanudacion }}">
             <source src="{{ video.archivo.url }}" type="video/mp4">
             {% for subtitulo in subtitulos %}
                 <track kind="subtitles"
@@ -263,6 +266,8 @@
             </div>
         </div>
     </div>
+    <form class="d-none" data-view-progress>{% csrf_token %}</form>
+    <p class="visually-hidden" role="status" aria-live="polite" data-progress-status></p>
 </main>
 <script>
     (() => {
@@ -281,8 +286,22 @@
         const seek = player.querySelector('[data-video-seek]');
         const currentTime = player.querySelector('[data-current-time]');
         const duration = player.querySelector('[data-duration]');
+        const resumeSeconds = Number(video.dataset.resumeSeconds) || 0;
+        const progressForm = document.querySelector('[data-view-progress]');
+        const progressStatus = document.querySelector('[data-progress-status]');
+        const progressUrl = video.dataset.progressUrl;
+        const nextEpisodeUrl = video.dataset.nextEpisodeUrl;
+        const csrfToken = progressForm.querySelector('[name="csrfmiddlewaretoken"]').value;
         let controlsTimeout;
         let previousVolume = video.volume || 1;
+        let lastReportedSecond = -1;
+        let lastAttemptedSecond = -1;
+        let pendingProgressSecond = null;
+        let progressSavePending = false;
+        let progressSaveAgain = false;
+        let queuedProgressForce = false;
+        let visualizacionId = null;
+        let hasStarted = false;
         const formatTime = (seconds) => {
             if (!Number.isFinite(seconds)) {
                 return '0:00';
@@ -319,6 +338,92 @@
                 `bi ${muted ? 'bi-volume-mute-fill' : 'bi-volume-up-fill'}`;
             muteButton.setAttribute('aria-label', muted ? 'Activar sonido' : 'Silenciar');
             muteButton.title = muted ? 'Activar sonido' : 'Silenciar';
+        };
+        const progressBody = () => {
+            const body = new URLSearchParams({
+                csrfmiddlewaretoken: csrfToken,
+                segundos_vistos: String(Math.floor(video.currentTime)),
+            });
+            if (visualizacionId !== null) {
+                body.set('visualizacion_id', String(visualizacionId));
+            }
+            return body;
+        };
+        const saveProgress = async (force = false) => {
+            if (!hasStarted) {
+                return;
+            }
+            const seconds = Math.floor(video.currentTime);
+            const lastProgressSecond = lastReportedSecond >= 0
+                ? lastReportedSecond
+                : lastAttemptedSecond;
+            if (!force && lastProgressSecond >= 0
+                && Math.abs(seconds - lastProgressSecond) < 10) {
+                return;
+            }
+            if (progressSavePending) {
+                if (force || seconds - pendingProgressSecond >= 10) {
+                    progressSaveAgain = true;
+                    queuedProgressForce = force;
+                }
+                while (progressSavePending) {
+                    await new Promise((resolve) => window.setTimeout(resolve, 25));
+                }
+                return saveProgress(force);
+            }
+            progressSavePending = true;
+            pendingProgressSecond = seconds;
+            lastAttemptedSecond = seconds;
+            let progressSaved = false;
+            try {
+                const response = await fetch(progressUrl, {
+                    method: 'POST',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                    body: progressBody(),
+                    credentials: 'same-origin',
+                    keepalive: true,
+                });
+                const result = await response.json();
+                if (!response.ok) {
+                    progressStatus.textContent =
+                        result.error || 'No se pudo guardar el progreso de reproducción.';
+                    return;
+                }
+                visualizacionId = result.visualizacion_id;
+                lastReportedSecond = Number(result.segundos_vistos);
+                progressSaved = true;
+                progressStatus.textContent = '';
+            } catch {
+                progressStatus.textContent =
+                    'No se pudo guardar el progreso de reproducción. Se volverá a intentar.';
+            } finally {
+                progressSavePending = false;
+                pendingProgressSecond = null;
+                if (progressSaveAgain && progressSaved) {
+                    const forceQueuedProgress = queuedProgressForce;
+                    progressSaveAgain = false;
+                    queuedProgressForce = false;
+                    saveProgress(forceQueuedProgress);
+                } else {
+                    progressSaveAgain = false;
+                    queuedProgressForce = false;
+                }
+            }
+        };
+        const sendFinalProgress = () => {
+            if (!hasStarted || (progressSavePending && visualizacionId === null)) {
+                return;
+            }
+            const body = progressBody();
+            if (!navigator.sendBeacon(progressUrl, body)) {
+                fetch(progressUrl, {
+                    method: 'POST',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                    body,
+                    credentials: 'same-origin',
+                    keepalive: true,
+                });
+            }
         };
 
         playButton.addEventListener('click', () => {
@@ -409,12 +514,55 @@
                 player.classList.add('video-controls-hidden');
             }, 3000);
         });
-        video.addEventListener('loadedmetadata', updateProgress);
-        video.addEventListener('timeupdate', updateProgress);
+        video.addEventListener('loadedmetadata', () => {
+            if (resumeSeconds > 0) {
+                video.currentTime = Math.min(resumeSeconds, video.duration || resumeSeconds);
+            }
+            updateProgress();
+        });
+        video.addEventListener('timeupdate', () => {
+            updateProgress();
+            if (!video.paused) {
+                saveProgress();
+            }
+        });
+        video.addEventListener('playing', () => {
+            hasStarted = true;
+            saveProgress(true);
+        });
+        video.addEventListener('seeked', () => {
+            saveProgress(true);
+        });
+        video.addEventListener('pause', () => {
+            updatePlayButton();
+            saveProgress(true);
+        });
+        video.addEventListener('ended', async () => {
+            updatePlayButton();
+            await saveProgress(true);
+            if (!nextEpisodeUrl) {
+                return;
+            }
+            try {
+                const response = await fetch(nextEpisodeUrl, {
+                    credentials: 'same-origin',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                });
+                if (!response.ok) {
+                    throw new Error('No se pudo buscar el siguiente episodio.');
+                }
+                const result = await response.json();
+                if (result.url) {
+                    window.location.assign(result.url);
+                }
+            } catch (error) {
+                progressStatus.textContent =
+                    error.message || 'No se pudo continuar con el siguiente episodio.';
+            }
+        });
         video.addEventListener('play', updatePlayButton);
-        video.addEventListener('pause', updatePlayButton);
-        video.addEventListener('ended', updatePlayButton);
         video.addEventListener('volumechange', updateMuteButton);
+        window.addEventListener('pagehide', sendFinalProgress);
         updateProgress();
         updatePlayButton();
         updateMuteButton();
