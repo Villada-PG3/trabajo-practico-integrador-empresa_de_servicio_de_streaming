@@ -136,6 +136,9 @@
             <a class="account-option{% if seccion_cuenta == 'suscripcion' %} is-active{% endif %}"
                href="{% url 'cuenta' %}?seccion=suscripcion"
                {% if seccion_cuenta == 'suscripcion' %}aria-current="page"{% endif %}>Suscripción</a>
+            <a class="account-option{% if seccion_cuenta == 'cobros' %} is-active{% endif %}"
+               href="{% url 'cuenta' %}?seccion=cobros"
+               {% if seccion_cuenta == 'cobros' %}aria-current="page"{% endif %}>Cobros</a>
             <a class="account-option{% if seccion_cuenta == 'mas-info' %} is-active{% endif %}"
                href="{% url 'cuenta' %}?seccion=mas-info"
                {% if seccion_cuenta == 'mas-info' %}aria-current="page"{% endif %}>Más info</a>
@@ -295,6 +298,43 @@
                         {% endif %}
                     {% else %}
                         <p class="text-white-50 mb-0">Esta cuenta no tiene suscripciones registradas.</p>
+                    {% endif %}
+                </section>
+            {% elif seccion_cuenta == 'cobros' %}
+                <section aria-labelledby="account-charges-heading">
+                    <h2 class="h4 fw-semibold mb-3 text-white" id="account-charges-heading">Cobros</h2>
+                    {% if cobros %}
+                        <div class="table-responsive">
+                            <table class="table table-dark table-striped align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">Fecha</th>
+                                        <th scope="col">Factura</th>
+                                        <th scope="col">Plan</th>
+                                        <th scope="col">Periodo Facturado</th>
+                                        <th scope="col">Número de tarjeta</th>
+                                        <th scope="col">Monto</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for cobro in cobros %}
+                                        <tr>
+                                            <td>{{ cobro.fecha_cobro|date:"d/m/Y" }}</td>
+                                            <td>{{ cobro.num_factura }}</td>
+                                            <td>{{ cobro.plan_facturado.nombre }}</td>
+                                            <td>
+                                                {{ cobro.periodo_inicio|date:"d/m/Y" }} -
+                                                {{ cobro.periodo_fin|date:"d/m/Y" }}
+                                            </td>
+                                            <td>**** {{ cobro.tarjeta.numero }}</td>
+                                            <td>${{ cobro.monto|floatformat:2 }}</td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <p class="text-white-50 mb-0">Todavía no tienes cobros registrados.</p>
                     {% endif %}
                 </section>
             {% else %}

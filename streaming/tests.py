@@ -323,6 +323,108 @@ class FlujoCuentaTests(TestCase):
         self.assertEqual(cobro.tarjeta, suscripcion.tarjeta)
         self.assertEqual(cobro.estado_cobro.nombre, 'Por aprobar')
 
+    @override_settings(DEBUG=True)
+    def test_nueva_suscripcion_al_plan_basico_tiene_primer_mes_gratis(self):
+        usuario = Usuario.objects.create_user(
+            username='nuevo-basico@example.com',
+            email='nuevo-basico@example.com',
+            password='UnaClave-larga-2026!',
+        )
+        plan = Plan.objects.create(
+            nombre='Básico',
+            cantidad_pantallas_simultaneas=1,
+        )
+        precio = Precio.objects.create(
+            plan=plan,
+            precio=3500,
+            fecha_inicio=timezone.localdate(),
+        )
+        self.client.force_login(usuario)
+
+        respuesta_planes = self.client.get(reverse('seleccionar_plan'))
+        self.assertContains(
+            respuesta_planes,
+            'Gratis el primer mes, luego a $3500.00 por mes',
+        )
+        respuesta_pago = self.client.get(
+            reverse('pagar_suscripcion', args=[plan.pk]),
+        )
+        self.assertContains(respuesta_pago, 'Monto del primer cobro')
+        self.assertContains(respuesta_pago, '$0.00')
+        self.assertContains(respuesta_pago, '$3500.00 por mes')
+
+        respuesta_confirmacion = self.client.post(
+            reverse('pagar_suscripcion', args=[plan.pk]),
+            {
+                'nombre_titular': 'USUARIO DE PRUEBA',
+                'numero_tarjeta': '4111111111111111',
+                'cvv': '123',
+                'marca_tarjeta': self.marca.pk,
+                'metodo_pago': self.metodo.pk,
+            },
+        )
+
+        self.assertRedirects(respuesta_confirmacion, reverse('crear_perfil'))
+        primer_cobro = Cobro.objects.get(
+            suscripcion__usuario=usuario,
+        )
+        self.assertEqual(primer_cobro.monto, 0)
+
+        procesar_cobros_demo(
+            ahora=timezone.now() + timedelta(days=31, seconds=10),
+        )
+        cobro_siguiente = Cobro.objects.get(
+            suscripcion=primer_cobro.suscripcion,
+            fecha_cobro__gt=primer_cobro.fecha_cobro,
+        )
+        self.assertEqual(cobro_siguiente.monto, precio.precio)
+
+    def test_cuenta_con_suscripcion_anterior_no_recibe_promocion_basica(self):
+        usuario = Usuario.objects.create_user(
+            username='recurrente@example.com',
+            email='recurrente@example.com',
+            password='UnaClave-larga-2026!',
+        )
+        Suscripcion.objects.create(
+            usuario=usuario,
+            plan=self.plan,
+            fecha_inscripcion=timezone.localdate() - timedelta(days=60),
+            fecha_vigencia=timezone.localdate() - timedelta(days=30),
+            habilitado=False,
+        )
+        plan = Plan.objects.create(
+            nombre='Plan Demo Basico',
+            cantidad_pantallas_simultaneas=1,
+        )
+        precio = Precio.objects.create(
+            plan=plan,
+            precio=3500,
+            fecha_inicio=timezone.localdate(),
+        )
+        self.client.force_login(usuario)
+
+        respuesta_planes = self.client.get(reverse('seleccionar_plan'))
+        self.assertNotContains(respuesta_planes, 'Gratis el primer mes')
+        respuesta_pago = self.client.get(
+            reverse('pagar_suscripcion', args=[plan.pk]),
+        )
+        self.assertNotContains(respuesta_pago, 'Promoción de bienvenida')
+
+        respuesta_confirmacion = self.client.post(
+            reverse('pagar_suscripcion', args=[plan.pk]),
+            {
+                'nombre_titular': 'USUARIO DE PRUEBA',
+                'numero_tarjeta': '4111111111111111',
+                'cvv': '123',
+                'marca_tarjeta': self.marca.pk,
+                'metodo_pago': self.metodo.pk,
+            },
+        )
+
+        self.assertRedirects(respuesta_confirmacion, reverse('crear_perfil'))
+        cobro = Cobro.objects.get(suscripcion__usuario=usuario)
+        self.assertEqual(cobro.monto, precio.precio)
+
 
 class CuentaTests(TestCase):
     def setUp(self):
@@ -983,6 +1085,75 @@ class CuentaTests(TestCase):
         self.assertNotContains(respuesta, '4111')
         self.assertNotContains(respuesta, '2222"')
 
+    def test_pestana_cobros_muestra_todos_ordenados_y_con_su_periodo(self):
+        marca = MarcaTarjeta.objects.create(nombre='Visa', numero_asignado=4)
+        metodo = MetodoPago.objects.create(nombre='Tarjeta')
+        tarjeta = Tarjeta.objects.create(
+            numero='4321',
+            nombre_titular='Titular',
+            fecha_vencimiento=date(2029, 1, 1),
+            marca_tarjeta=marca,
+            metodo_pago=metodo,
+        )
+        estado = EstadoCobro.objects.create(nombre='Aprobado')
+        suscripcion_anterior = Suscripcion.objects.create(
+            usuario=self.usuario,
+            plan=Plan.objects.create(
+                nombre='Plan anterior',
+                cantidad_pantallas_simultaneas=1,
+            ),
+            fecha_inscripcion=date(2026, 1, 1),
+            fecha_vigencia=date(2026, 2, 28),
+        )
+        suscripcion_actual = Suscripcion.objects.create(
+            usuario=self.usuario,
+            plan=Plan.objects.create(
+                nombre='Plan actual',
+                cantidad_pantallas_simultaneas=2,
+            ),
+            fecha_inscripcion=date(2026, 3, 1),
+            fecha_vigencia=date(2026, 3, 28),
+        )
+        cobro_anterior = Cobro.objects.create(
+            num_factura=101,
+            suscripcion=suscripcion_anterior,
+            fecha_cobro=date(2026, 2, 28),
+            estado_cobro=estado,
+            tarjeta=tarjeta,
+            monto=10,
+        )
+        cobro_reciente = Cobro.objects.create(
+            num_factura=102,
+            suscripcion=suscripcion_actual,
+            fecha_cobro=date(2026, 3, 28),
+            estado_cobro=estado,
+            tarjeta=tarjeta,
+            monto=20,
+        )
+
+        respuesta = self.client.get(
+            reverse('cuenta'),
+            {'seccion': 'cobros'},
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(
+            list(respuesta.context['cobros']),
+            [cobro_reciente, cobro_anterior],
+        )
+        self.assertEqual(
+            [cobro.plan_facturado.nombre for cobro in respuesta.context['cobros']],
+            ['Plan actual', 'Plan anterior'],
+        )
+        self.assertContains(respuesta, '28/03/2026')
+        self.assertContains(respuesta, '27/04/2026')
+        self.assertContains(respuesta, '28/02/2026')
+        self.assertContains(respuesta, '27/03/2026')
+        self.assertContains(respuesta, '**** 4321')
+        self.assertContains(respuesta, '101')
+        self.assertContains(respuesta, '102')
+        self.assertContains(respuesta, '$20.00')
+
     def test_suscripcion_sin_cobros_muestra_mensaje_para_tarjeta(self):
         Suscripcion.objects.create(
             usuario=self.usuario,
@@ -1422,6 +1593,7 @@ class ProcesamientoCobrosTests(TestCase):
             {'creados': 1, 'aprobados': 0, 'suscripciones_canceladas': 0},
         )
         cobro = Cobro.objects.get(suscripcion=suscripcion)
+        self.assertEqual(cobro.numero_autorizacion, '')
         self.assertEqual(cobro.fecha_cobro, date(2026, 2, 28))
         self.assertEqual(cobro.tarjeta, suscripcion.tarjeta)
         self.assertEqual(cobro.monto, 20)
@@ -1441,6 +1613,7 @@ class ProcesamientoCobrosTests(TestCase):
         )
         cobro.refresh_from_db()
         self.assertEqual(cobro.estado_cobro.nombre, 'Aprobado')
+        self.assertRegex(cobro.numero_autorizacion, r'^DEMO-AUTH-[0-9A-F]{12}$')
         cambio.refresh_from_db()
         self.assertEqual(cambio.estado, CambioPlan.ESTADO_APLICADO)
         suscripcion.refresh_from_db()

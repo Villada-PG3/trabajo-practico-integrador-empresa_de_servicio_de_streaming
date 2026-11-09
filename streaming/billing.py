@@ -1,5 +1,6 @@
 import calendar
 import re
+import secrets
 from datetime import date, timedelta
 
 from django.conf import settings
@@ -79,6 +80,10 @@ def numero_tarjeta_valido(numero):
     return suma % 10 == 0
 
 
+def generar_numero_autorizacion_demo():
+    return f'DEMO-AUTH-{secrets.token_hex(6).upper()}'
+
+
 def guardar_tarjeta_demo(
     nombre_titular,
     numero_tarjeta,
@@ -154,7 +159,8 @@ def procesar_cobros_demo(ahora=None):
             continue
 
         cobro.estado_cobro = aprobado
-        cobro.save(update_fields=['estado_cobro'])
+        cobro.numero_autorizacion = generar_numero_autorizacion_demo()
+        cobro.save(update_fields=['estado_cobro', 'numero_autorizacion'])
         suscripcion.fecha_vigencia = cobro.fecha_cobro
         if (
             cobro.cambio_plan_id

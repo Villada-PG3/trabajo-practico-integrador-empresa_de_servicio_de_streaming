@@ -1,5 +1,6 @@
 import json
-from datetime import date
+import unicodedata
+from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from django.contrib import messages
@@ -1248,7 +1249,7 @@ def registro_view(request):
 def cuenta_view(request):
     registrar_sesion_usuario(request, request.user)
     seccion = request.GET.get('seccion', 'usuario')
-    if seccion not in {'usuario', 'suscripcion', 'mas-info'}:
+    if seccion not in {'usuario', 'suscripcion', 'cobros', 'mas-info'}:
         seccion = 'usuario'
 
     form = CuentaPreferenciasForm(
@@ -1298,6 +1299,25 @@ def cuenta_view(request):
             .first()
         )
 
+    cobros = list(
+        Cobro.objects.filter(suscripcion__usuario=request.user)
+        .select_related(
+            'suscripcion__plan',
+            'cambio_plan__plan',
+            'tarjeta',
+        )
+        .order_by('-fecha_cobro', '-pk')
+    )
+    for cobro in cobros:
+        cobro.plan_facturado = (
+            cobro.cambio_plan.plan
+            if cobro.cambio_plan_id
+            else cobro.suscripcion.plan
+        )
+        cobro.periodo_inicio = cobro.fecha_cobro
+        proximo_cobro = calcular_proximo_cobro(cobro.fecha_cobro)
+        cobro.periodo_fin = proximo_cobro - timedelta(days=1)
+
     return render(request, 'cuenta.html', {
         'form': form,
         'seccion_cuenta': seccion,
@@ -1314,6 +1334,7 @@ def cuenta_view(request):
         ),
         'precio_actual': precio_actual,
         'ultimo_cobro': ultimo_cobro,
+        'cobros': cobros,
         'calidades': (
             suscripcion.plan.plan_calidades.select_related('calidad').order_by(
                 'calidad__nombre',
@@ -1515,6 +1536,14 @@ def obtener_suscripcion_activa(usuario):
     )
 
 
+def es_plan_basico(plan):
+    nombre_normalizado = unicodedata.normalize(
+        'NFKD',
+        plan.nombre,
+    ).encode('ascii', 'ignore').decode('ascii').casefold()
+    return 'basico' in nombre_normalizado.split()
+
+
 @login_required
 def desactivar_perfil_view(request, perfil_id):
     perfil = Perfil.objects.filter(
@@ -1559,6 +1588,9 @@ def seleccionar_plan_view(request):
     )
 
     cambiar_plan = request.GET.get('cambiar') == '1'
+    primera_suscripcion = not Suscripcion.objects.filter(
+        usuario=request.user,
+    ).exists()
     suscripcion_actual = obtener_suscripcion_activa(request.user)
     if suscripcion_actual and not cambiar_plan:
         messages.info(request, 'Tu cuenta ya tiene una suscripción activa.')
@@ -1597,7 +1629,15 @@ def seleccionar_plan_view(request):
             .first()
         )
         if precio_actual:
-            planes_con_precio.append({'plan': plan, 'precio': precio_actual})
+            planes_con_precio.append({
+                'plan': plan,
+                'precio': precio_actual,
+                'primer_mes_gratis': (
+                    primera_suscripcion
+                    and not cambiar_plan
+                    and es_plan_basico(plan)
+                ),
+            })
 
     fecha_aplicacion = hoy
     if suscripcion_actual:
@@ -1629,12 +1669,20 @@ def pagar_suscripcion_view(request, plan_id):
         messages.error(request, 'El plan seleccionado ya no está disponible.')
         return redirect('seleccionar_plan')
 
+    primer_mes_gratis = (
+        es_plan_basico(precio.plan)
+        and not Suscripcion.objects.filter(usuario=request.user).exists()
+    )
     form = TarjetaDemoPlanForm(request.POST or None)
     if request.method == 'POST' and form.is_valid():
         with transaction.atomic():
             if obtener_suscripcion_activa(request.user) is not None:
                 messages.info(request, 'Tu cuenta ya tiene una suscripción activa.')
                 return redirect('home')
+            primer_mes_gratis = (
+                es_plan_basico(precio.plan)
+                and not Suscripcion.objects.filter(usuario=request.user).exists()
+            )
             fecha_inicio = fecha_inicio_suscripcion(request.user, hoy)
             tarjeta = guardar_tarjeta_demo(
                 form.cleaned_data['nombre_titular'],
@@ -1663,7 +1711,7 @@ def pagar_suscripcion_view(request, plan_id):
                 fecha_cobro=fecha_inicio,
                 estado_cobro=por_aprobar,
                 tarjeta=tarjeta,
-                monto=precio.precio,
+                monto=0 if primer_mes_gratis else precio.precio,
             )
         messages.success(
             request,
@@ -1676,6 +1724,7 @@ def pagar_suscripcion_view(request, plan_id):
         'form': form,
         'plan': precio.plan,
         'precio': precio,
+        'primer_mes_gratis': primer_mes_gratis,
         'fecha_aplicacion': fecha_inicio_suscripcion(request.user, hoy),
         'suscripcion_inicial': True,
     })
