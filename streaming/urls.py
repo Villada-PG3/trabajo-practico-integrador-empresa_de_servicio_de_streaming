@@ -7,6 +7,31 @@ urlpatterns = [
     path('categorias/', views.categorias_view, name='categorias'),
     path('buscar/', views.buscar_titulos_view, name='buscar_titulos'),
     path('mi-lista/', views.mi_lista_view, name='mi_lista'),
+    path(
+        'titulos/<int:titulo_id>/reproducir/',
+        views.reproducir_titulo_view,
+        name='reproducir_titulo',
+    ),
+    path(
+        'titulos/<int:titulo_id>/contenidos/<int:contenido_id>/reproducir/',
+        views.reproducir_titulo_view,
+        name='reproducir_contenido',
+    ),
+    path(
+        'titulos/<int:titulo_id>/reproducir/<int:video_id>/',
+        views.reproducir_video_view,
+        name='reproducir_video',
+    ),
+    path(
+        'titulos/<int:titulo_id>/reproducir/<int:video_id>/subtitulos/<int:subtitulo_id>.vtt',
+        views.servir_subtitulo_view,
+        name='servir_subtitulo',
+    ),
+    path(
+        'titulos/<int:titulo_id>/reproducir/<int:video_id>/subtitulos/<int:subtitulo_id>.vtt',
+        views.servir_subtitulo_view,
+        name='servir_subtitulo',
+    ),
     path('mi-lista/toggle/<int:titulo_id>/', views.toggle_mi_lista_view, name='toggle_mi_lista'),
     path('titulos/<int:titulo_id>/calificar/', views.calificar_titulo_view, name='calificar_titulo'),
     path('perfiles/', views.perfiles_view, name='perfiles'),

@@ -1,0 +1,424 @@
+{% extends "base.html" %}
+
+{% block title %}Reproducción - RedFlix{% endblock %}
+
+{% block extra_css %}
+<style>
+    .video-player {
+        position: relative;
+        overflow: hidden;
+        background: #000;
+    }
+
+    .video-player > video {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+    }
+
+    .video-back {
+        position: absolute;
+        z-index: 2;
+        top: 1rem;
+        left: 1rem;
+        display: grid;
+        width: 2.75rem;
+        height: 2.75rem;
+        place-items: center;
+        border: 0;
+        border-radius: 50%;
+        background: rgba(0, 0, 0, 0.65);
+        color: #fff;
+        font-size: 1.5rem;
+        text-decoration: none;
+    }
+
+    .video-back:hover,
+    .video-back:focus-visible {
+        background: rgba(0, 0, 0, 0.9);
+        color: #fff;
+    }
+
+    .video-player > .video-controls {
+        position: absolute;
+        top: auto;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        height: auto;
+        padding: 3rem 1.5rem 1rem;
+        background: linear-gradient(transparent, rgba(0, 0, 0, 0.85));
+        color: #fff;
+        opacity: 1;
+        transition: opacity 0.25s ease;
+    }
+
+    .video-player.video-controls-hidden > .video-controls {
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    .video-seek-row {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        margin-bottom: 0.35rem;
+        font-size: 0.8rem;
+    }
+
+    .video-seek {
+        flex: 1;
+        height: 0.35rem;
+        accent-color: #e50914;
+        cursor: pointer;
+    }
+
+    .video-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .video-volume-control {
+        display: flex;
+        align-items: center;
+        margin-left: auto;
+    }
+
+    .video-volume {
+        width: 0;
+        height: 0.35rem;
+        margin: 0;
+        opacity: 0;
+        accent-color: #e50914;
+        pointer-events: none;
+        transition: width 0.2s ease, opacity 0.2s ease, margin 0.2s ease;
+    }
+
+    .video-volume-control:hover .video-volume,
+    .video-volume-control:focus-within .video-volume {
+        width: 6rem;
+        margin-right: 0.5rem;
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    .video-captions-control {
+        position: relative;
+    }
+
+    .video-captions-menu {
+        position: absolute;
+        right: 0;
+        bottom: calc(100% + 0.5rem);
+        z-index: 3;
+        min-width: 11rem;
+        padding: 0.35rem;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 0.35rem;
+        background: rgba(20, 20, 20, 0.97);
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.5);
+    }
+
+    .video-captions-menu[hidden] {
+        display: none;
+    }
+
+    .video-captions-option {
+        display: block;
+        width: 100%;
+        padding: 0.5rem 0.75rem;
+        border: 0;
+        border-radius: 0.25rem;
+        background: transparent;
+        color: #fff;
+        text-align: left;
+    }
+
+    .video-captions-option:hover,
+    .video-captions-option[aria-pressed="true"] {
+        background: rgba(255, 255, 255, 0.16);
+    }
+
+    .video-player video::cue {
+        background: rgba(0, 0, 0, 0.78);
+        color: #fff;
+        font-size: 1.15rem;
+    }
+
+    .video-control-button {
+        display: inline-flex;
+        min-width: 2.75rem;
+        min-height: 2.75rem;
+        align-items: center;
+        justify-content: center;
+        gap: 0.3rem;
+        border: 0;
+        border-radius: 0.35rem;
+        background: transparent;
+        color: #fff;
+        font-size: 1.25rem;
+    }
+
+    .video-control-button:hover,
+    .video-control-button:focus-visible {
+        background: rgba(255, 255, 255, 0.16);
+    }
+
+    .video-skip-button {
+        font-size: 1rem;
+    }
+
+    @media (max-width: 575.98px) {
+        .video-controls {
+            padding: 2rem 0.75rem 0.5rem;
+        }
+
+        .video-back {
+            top: 0.5rem;
+            left: 0.5rem;
+            width: 2.4rem;
+            height: 2.4rem;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="container-fluid py-4">
+    <div class="ratio ratio-16x9 video-player" data-video-player>
+        <a class="video-back"
+           href="{% url 'home' %}?titulo={{ titulo.pk }}"
+           aria-label="Volver a Inicio con el detalle de {{ titulo.nombre_original }}"
+           title="Volver a Inicio">
+            <i class="bi bi-arrow-left" aria-hidden="true"></i>
+        </a>
+        <video autoplay playsinline preload="metadata" data-video>
+            <source src="{{ video.archivo.url }}" type="video/mp4">
+            {% for subtitulo in subtitulos %}
+                <track kind="subtitles"
+                       src="{{ subtitulo.url }}"
+                       srclang="{{ subtitulo.codigo_idioma }}"
+                       label="{{ subtitulo.idioma.nombre }}"
+                       data-subtitle-track="{{ forloop.counter0 }}">
+            {% endfor %}
+            Tu navegador no puede reproducir este video.
+        </video>
+        <div class="video-controls" aria-label="Controles de reproducción">
+            <div class="video-seek-row">
+                <span data-current-time>0:00</span>
+                <input class="video-seek" type="range" min="0" max="0" step="0.1"
+                       value="0" aria-label="Posición del video" data-video-seek>
+                <span data-duration>0:00</span>
+            </div>
+            <div class="video-actions">
+                <button class="video-control-button" type="button"
+                        aria-label="Reproducir" title="Reproducir"
+                        data-video-play>
+                    <i class="bi bi-play-fill" aria-hidden="true"></i>
+                </button>
+                <button class="video-control-button video-skip-button" type="button"
+                        aria-label="Retroceder 10 segundos" title="Retroceder 10 segundos"
+                        data-video-backward>
+                    <i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i>
+                    <span>10</span>
+                </button>
+                <button class="video-control-button video-skip-button" type="button"
+                        aria-label="Adelantar 10 segundos" title="Adelantar 10 segundos"
+                        data-video-forward>
+                    <i class="bi bi-arrow-clockwise" aria-hidden="true"></i>
+                    <span>10</span>
+                </button>
+                <div class="video-volume-control">
+                    <input class="video-volume" type="range" min="0" max="1" step="0.05"
+                           value="1" aria-label="Nivel de sonido" data-video-volume>
+                    <button class="video-control-button" type="button"
+                            aria-label="Silenciar" title="Silenciar" data-video-mute>
+                        <i class="bi bi-volume-up-fill" aria-hidden="true"></i>
+                    </button>
+                </div>
+                <div class="video-captions-control">
+                    <button class="video-control-button" type="button"
+                            aria-label="Subtítulos" title="Subtítulos"
+                            aria-expanded="false" aria-controls="video-captions-menu"
+                            data-captions-toggle>
+                        <i class="bi bi-badge-cc-fill" aria-hidden="true"></i>
+                    </button>
+                    <div class="video-captions-menu" id="video-captions-menu"
+                         role="group" aria-label="Opciones de subtítulos" hidden
+                         data-captions-menu>
+                        <button class="video-captions-option" type="button"
+                                aria-pressed="true" data-subtitle-off>
+                            Desactivados
+                        </button>
+                        {% for subtitulo in subtitulos %}
+                            <button class="video-captions-option" type="button"
+                                    aria-pressed="false"
+                                    data-subtitle-select="{{ forloop.counter0 }}">
+                                {{ subtitulo.idioma.nombre }}
+                            </button>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+<script>
+    (() => {
+        const player = document.querySelector('[data-video-player]');
+        const video = player?.querySelector('[data-video]');
+        if (!video) {
+            return;
+        }
+
+        const playButton = player.querySelector('[data-video-play]');
+        const muteButton = player.querySelector('[data-video-mute]');
+        const volume = player.querySelector('[data-video-volume]');
+        const captionsToggle = player.querySelector('[data-captions-toggle]');
+        const captionsMenu = player.querySelector('[data-captions-menu]');
+        const subtitleTracks = [...video.querySelectorAll('track[data-subtitle-track]')];
+        const seek = player.querySelector('[data-video-seek]');
+        const currentTime = player.querySelector('[data-current-time]');
+        const duration = player.querySelector('[data-duration]');
+        let controlsTimeout;
+        let previousVolume = video.volume || 1;
+        const formatTime = (seconds) => {
+            if (!Number.isFinite(seconds)) {
+                return '0:00';
+            }
+            const wholeSeconds = Math.floor(seconds);
+            const minutes = Math.floor(wholeSeconds / 60);
+            const remainingSeconds = String(wholeSeconds % 60).padStart(2, '0');
+            return `${minutes}:${remainingSeconds}`;
+        };
+        const updatePlayButton = () => {
+            const playing = !video.paused && !video.ended;
+            const icon = playButton.querySelector('i');
+            icon.className = `bi ${playing ? 'bi-pause-fill' : 'bi-play-fill'}`;
+            playButton.setAttribute('aria-label', playing ? 'Pausar' : 'Reproducir');
+            playButton.title = playing ? 'Pausar' : 'Reproducir';
+        };
+        const updateProgress = () => {
+            seek.max = Number.isFinite(video.duration) ? video.duration : 0;
+            seek.value = video.currentTime;
+            currentTime.textContent = formatTime(video.currentTime);
+            duration.textContent = formatTime(video.duration);
+        };
+        const showControls = () => {
+            player.classList.remove('video-controls-hidden');
+            window.clearTimeout(controlsTimeout);
+            controlsTimeout = window.setTimeout(() => {
+                player.classList.add('video-controls-hidden');
+            }, 3000);
+        };
+        const updateMuteButton = () => {
+            const muted = video.muted || video.volume === 0;
+            volume.value = muted ? '0' : String(video.volume);
+            muteButton.querySelector('i').className =
+                `bi ${muted ? 'bi-volume-mute-fill' : 'bi-volume-up-fill'}`;
+            muteButton.setAttribute('aria-label', muted ? 'Activar sonido' : 'Silenciar');
+            muteButton.title = muted ? 'Activar sonido' : 'Silenciar';
+        };
+
+        playButton.addEventListener('click', () => {
+            if (video.paused) {
+                video.play().catch(() => updatePlayButton());
+            } else {
+                video.pause();
+            }
+        });
+        player.querySelector('[data-video-backward]').addEventListener('click', () => {
+            video.currentTime = Math.max(0, video.currentTime - 10);
+        });
+        player.querySelector('[data-video-forward]').addEventListener('click', () => {
+            video.currentTime = Math.min(video.duration || 0, video.currentTime + 10);
+        });
+        seek.addEventListener('input', () => {
+            video.currentTime = Number(seek.value);
+        });
+        muteButton.addEventListener('click', () => {
+            if (video.muted || video.volume === 0) {
+                video.muted = false;
+                video.volume = previousVolume;
+            } else {
+                previousVolume = video.volume;
+                video.muted = true;
+            }
+            updateMuteButton();
+        });
+        captionsToggle.addEventListener('click', () => {
+            const opening = captionsMenu.hidden;
+            captionsMenu.hidden = !opening;
+            captionsToggle.setAttribute('aria-expanded', String(opening));
+            showControls();
+        });
+        const selectSubtitle = (selectedIndex) => {
+            [...video.textTracks].forEach((track, index) => {
+                track.mode = index === selectedIndex ? 'showing' : 'disabled';
+            });
+            captionsMenu.querySelectorAll('[data-subtitle-off], [data-subtitle-select]')
+                .forEach((option) => {
+                    const selected = option.hasAttribute('data-subtitle-off')
+                        ? selectedIndex === -1
+                        : Number(option.dataset.subtitleSelect) === selectedIndex;
+                    option.setAttribute('aria-pressed', String(selected));
+                });
+            captionsToggle.classList.toggle('is-active', selectedIndex >= 0);
+        };
+        captionsMenu.querySelector('[data-subtitle-off]')
+            .addEventListener('click', () => selectSubtitle(-1));
+        captionsMenu.querySelectorAll('[data-subtitle-select]').forEach((option) => {
+            option.addEventListener('click', () => {
+                selectSubtitle(Number(option.dataset.subtitleSelect));
+            });
+        });
+        document.addEventListener('click', (event) => {
+            if (!player.querySelector('.video-captions-control').contains(event.target)) {
+                captionsMenu.hidden = true;
+                captionsToggle.setAttribute('aria-expanded', 'false');
+            }
+        });
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && !captionsMenu.hidden) {
+                captionsMenu.hidden = true;
+                captionsToggle.setAttribute('aria-expanded', 'false');
+                captionsToggle.focus();
+            }
+        });
+        subtitleTracks.forEach((track) => {
+            const trackIndex = Number(track.dataset.subtitleTrack);
+            if (video.textTracks[trackIndex]) {
+                video.textTracks[trackIndex].mode = 'disabled';
+            }
+        });
+        volume.addEventListener('input', () => {
+            video.volume = Number(volume.value);
+            video.muted = video.volume === 0;
+            if (video.volume > 0) {
+                previousVolume = video.volume;
+            }
+            updateMuteButton();
+        });
+        ['pointermove', 'pointerdown', 'keydown', 'focusin'].forEach((eventName) => {
+            player.addEventListener(eventName, showControls);
+        });
+        player.addEventListener('pointerleave', () => {
+            window.clearTimeout(controlsTimeout);
+            controlsTimeout = window.setTimeout(() => {
+                player.classList.add('video-controls-hidden');
+            }, 3000);
+        });
+        video.addEventListener('loadedmetadata', updateProgress);
+        video.addEventListener('timeupdate', updateProgress);
+        video.addEventListener('play', updatePlayButton);
+        video.addEventListener('pause', updatePlayButton);
+        video.addEventListener('ended', updatePlayButton);
+        video.addEventListener('volumechange', updateMuteButton);
+        updateProgress();
+        updatePlayButton();
+        updateMuteButton();
+        showControls();
+    })();
+</script>
+{% endblock %}

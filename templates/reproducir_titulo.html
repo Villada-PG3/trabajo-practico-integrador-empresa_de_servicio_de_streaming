@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block title %}{{ titulo.nombre_original }} - RedFlix{% endblock %}
+
+{% block extra_css %}
+<style>
+    .playback-selection .form-select,
+    .playback-selection .form-select option {
+        color: #fff;
+        background-color: #343a40;
+    }
+
+    .playback-selection .form-select {
+        border-color: #6c757d;
+        --bs-form-select-bg-img: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23ffffff' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
+    }
+
+    .playback-selection .form-select:focus {
+        border-color: #8bd5f0;
+        box-shadow: 0 0 0 0.2rem rgba(139, 213, 240, 0.3);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="container py-5" style="max-width: 720px;">
+    <a class="btn btn-outline-light mb-4" href="{% url 'home' %}">
+        <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>Volver al catálogo
+    </a>
+
+    <section class="card bg-dark border-secondary p-4">
+        <h1 class="h3 fw-bold text-white mb-2">{{ titulo.nombre_original }}</h1>
+        <h2 class="h6 text-white-50 mb-4">{{ contenido.nombre }}</h2>
+
+        {% if opciones_reproduccion %}
+            <p class="small text-white-50">
+                Las opciones disponibles dependen del contenido y de tu plan
+                ({{ suscripcion.plan.nombre }}).
+            </p>
+            <form method="post" class="playback-selection">
+                {% csrf_token %}
+                <div class="mb-3">
+                    <label class="form-label text-white" for="playback-language">Idioma</label>
+                    <select class="form-select" id="playback-language" name="idioma" required>
+                        {% for idioma in idiomas %}
+                            <option value="{{ idioma.pk }}"
+                                    {% if idioma_seleccionado == idioma.pk|stringformat:"s" %}selected{% endif %}>
+                                {{ idioma.nombre }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label text-white" for="playback-quality">Calidad</label>
+                    <select class="form-select" id="playback-quality" name="video" required>
+                        {% for opcion in opciones_reproduccion %}
+                            <option value="{{ opcion.pk }}"
+                                    data-language="{{ opcion.idioma_contenido.idioma_id }}"
+                                    {% if video_seleccionado == opcion.pk|stringformat:"s" %}selected{% endif %}>
+                                {{ opcion.calidad.nombre }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="text-end mt-4">
+                    <button class="btn btn-netflix" type="submit">
+                        <i class="bi bi-play-fill me-1" aria-hidden="true"></i>Reproducir
+                    </button>
+                </div>
+            </form>
+            <script>
+                (() => {
+                    const language = document.getElementById('playback-language');
+                    const quality = document.getElementById('playback-quality');
+                    const updateQualities = () => {
+                        const options = [...quality.options];
+                        options.forEach((option) => {
+                            option.hidden = option.dataset.language !== language.value;
+                        });
+                        if (quality.selectedOptions[0]?.hidden) {
+                            const firstAvailable = options.find(
+                                (option) => !option.hidden,
+                            );
+                            quality.value = firstAvailable?.value || '';
+                        }
+                    };
+                    language.addEventListener('change', updateQualities);
+                    updateQualities();
+                })();
+            </script>
+        {% else %}
+            <div class="alert alert-secondary mb-0" role="status">
+                No hay idiomas y calidades con video disponibles para este contenido y tu plan.
+            </div>
+        {% endif %}
+    </section>
+</main>
+{% endblock %}

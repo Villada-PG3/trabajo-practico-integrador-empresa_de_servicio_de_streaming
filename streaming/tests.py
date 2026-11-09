@@ -1,13 +1,16 @@
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from io import StringIO
+from unittest.mock import patch
 
 from django.core.management import call_command
 from django.core.management.base import CommandError
+from django.core.exceptions import ValidationError
 from django.contrib.sessions.models import Session
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
+from django.core.files.uploadedfile import SimpleUploadedFile
 
 from .billing import (
     fecha_inicio_suscripcion,
@@ -20,6 +23,7 @@ from .models import (
     Calificacion,
     CambioPlan,
     Calidad,
+    CalidadIdiomaContenido,
     Contenido,
     Elenco,
     Imagen,
@@ -43,6 +47,7 @@ from .models import (
     Rol,
     RolElenco,
     Suscripcion,
+    Subtitulo,
     TipoPerfil,
     TipoTitulo,
     Titulo,
@@ -76,6 +81,27 @@ class FlujoCuentaTests(TestCase):
             'pais': self.pais.pk,
             'idioma': self.idioma.pk,
         }
+
+    def test_archivo_de_calidad_idioma_contenido_acepta_mp4_y_rechaza_otras_extensiones(self):
+        campo_archivo = CalidadIdiomaContenido._meta.get_field('archivo')
+
+        archivo_mp4 = SimpleUploadedFile(
+            'episodio.mp4',
+            b'contenido de video de prueba',
+            content_type='video/mp4',
+        )
+        self.assertEqual(
+            campo_archivo.clean(archivo_mp4, None).name,
+            'episodio.mp4',
+        )
+
+        archivo_avi = SimpleUploadedFile(
+            'episodio.avi',
+            b'contenido de video de prueba',
+            content_type='video/x-msvideo',
+        )
+        with self.assertRaises(ValidationError):
+            campo_archivo.clean(archivo_avi, None)
 
     def test_formulario_de_tarjeta_valida_luhn_y_no_ofrece_efectivo(self):
         tarjeta_valida = TarjetaDemoPlanForm({
@@ -1791,6 +1817,271 @@ class HomeCarouselesTests(TestCase):
             )
         return titulo
 
+    def test_titulo_abre_reproduccion_del_primer_contenido_con_video_localizado(self):
+        ingles = Idioma.objects.create(nombre='English')
+        titulo = self.crear_titulo(
+            'Película para reproducir',
+            self.pelicula,
+            con_contenido=False,
+        )
+        contenido_posterior = Contenido.objects.create(
+            nombre='Segundo contenido',
+            seccion=1,
+            orden=2,
+            duracion_segundos=120,
+            titulo=titulo,
+        )
+        primer_contenido = Contenido.objects.create(
+            nombre='Primer contenido',
+            seccion=1,
+            orden=1,
+            duracion_segundos=60,
+            titulo=titulo,
+        )
+        idioma_espanol = IdiomaContenido.objects.create(
+            idioma=self.idioma,
+            contenido=primer_contenido,
+        )
+        idioma_ingles = IdiomaContenido.objects.create(
+            idioma=ingles,
+            contenido=primer_contenido,
+        )
+        calidad_hd = Calidad.objects.create(nombre='HD')
+        calidad_full_hd = Calidad.objects.create(nombre='Full HD')
+        CalidadIdiomaContenido.objects.create(
+            idioma_contenido=idioma_ingles,
+            calidad=calidad_hd,
+            archivo_legacy=b'',
+            archivo='videos/primer-contenido-en.mp4',
+        )
+        video_espanol = CalidadIdiomaContenido.objects.create(
+            idioma_contenido=idioma_espanol,
+            calidad=calidad_hd,
+            archivo_legacy=b'',
+            archivo='videos/primer-contenido-es.mp4',
+        )
+        video_full_hd = CalidadIdiomaContenido.objects.create(
+            idioma_contenido=idioma_espanol,
+            calidad=calidad_full_hd,
+            archivo_legacy=b'',
+            archivo='videos/primer-contenido-full-hd.mp4',
+        )
+        idioma_contenido_posterior = IdiomaContenido.objects.create(
+            idioma=self.idioma,
+            contenido=contenido_posterior,
+        )
+        video_posterior = CalidadIdiomaContenido.objects.create(
+            idioma_contenido=idioma_contenido_posterior,
+            calidad=calidad_hd,
+            archivo_legacy=b'',
+            archivo='videos/contenido-posterior.mp4',
+        )
+        plan = Plan.objects.create(
+            nombre='Plan HD',
+            cantidad_pantallas_simultaneas=1,
+        )
+        PlanCalidad.objects.create(plan=plan, calidad=calidad_hd)
+        usuario = Usuario.objects.create_user(
+            username='reproduccion@example.com',
+            email='reproduccion@example.com',
+            password='UnaClave-larga-2026!',
+            idioma=self.idioma,
+        )
+        Suscripcion.objects.create(
+            usuario=usuario,
+            plan=plan,
+            fecha_inscripcion=timezone.localdate(),
+            fecha_vigencia=timezone.localdate(),
+        )
+        self.autenticar_con_perfil(usuario)
+
+        with patch(
+            'django.core.files.storage.FileSystemStorage.exists',
+            side_effect=lambda path: path.startswith('videos/'),
+        ):
+            respuesta_inicio = self.client.get(reverse('home'))
+            self.assertContains(
+                respuesta_inicio,
+                reverse('reproducir_titulo', args=[titulo.pk]),
+            )
+            pagina_inicio_regreso = self.client.get(
+                reverse('home'),
+                {'titulo': titulo.pk},
+            )
+            self.assertContains(
+                pagina_inicio_regreso,
+                f'data-title-id="{titulo.pk}"',
+            )
+            self.assertContains(
+                pagina_inicio_regreso,
+                'new URLSearchParams(window.location.search).get(\'titulo\')',
+            )
+            respuesta = self.client.get(
+                reverse('reproducir_titulo', args=[titulo.pk]),
+            )
+            self.assertEqual(respuesta.status_code, 200)
+            self.assertEqual(respuesta.context['contenido'], primer_contenido)
+            self.assertContains(respuesta, 'Español')
+            self.assertContains(respuesta, 'English')
+            self.assertContains(respuesta, 'Plan HD')
+            self.assertNotContains(respuesta, 'Full HD')
+
+            respuesta_contenido = self.client.get(
+                reverse(
+                    'reproducir_contenido',
+                    args=[titulo.pk, contenido_posterior.pk],
+                ),
+            )
+            self.assertEqual(respuesta_contenido.status_code, 200)
+            self.assertEqual(
+                respuesta_contenido.context['contenido'],
+                contenido_posterior,
+            )
+            respuesta_video_posterior = self.client.post(
+                reverse(
+                    'reproducir_contenido',
+                    args=[titulo.pk, contenido_posterior.pk],
+                ),
+                {
+                    'idioma': self.idioma.pk,
+                    'video': video_posterior.pk,
+                },
+            )
+            self.assertRedirects(
+                respuesta_video_posterior,
+                reverse(
+                    'reproducir_video',
+                    args=[titulo.pk, video_posterior.pk],
+                ),
+                fetch_redirect_response=False,
+            )
+            pagina_video_posterior = self.client.get(
+                reverse(
+                    'reproducir_video',
+                    args=[titulo.pk, video_posterior.pk],
+                ),
+            )
+            self.assertEqual(pagina_video_posterior.status_code, 200)
+            self.assertEqual(
+                pagina_video_posterior.context['contenido'],
+                contenido_posterior,
+            )
+            self.assertContains(
+                pagina_video_posterior,
+                'videos/contenido-posterior.mp4',
+            )
+
+            respuesta_reproduccion = self.client.post(
+                reverse('reproducir_titulo', args=[titulo.pk]),
+                {
+                    'idioma': self.idioma.pk,
+                    'video': video_espanol.pk,
+                },
+            )
+            self.assertRedirects(
+                respuesta_reproduccion,
+                reverse(
+                    'reproducir_video',
+                    args=[titulo.pk, video_espanol.pk],
+                ),
+                fetch_redirect_response=False,
+            )
+            pagina_video = self.client.get(
+                reverse('reproducir_video', args=[titulo.pk, video_espanol.pk]),
+            )
+            self.assertEqual(pagina_video.status_code, 200)
+            self.assertEqual(pagina_video.context['video'], video_espanol)
+            self.assertContains(pagina_video, 'videos/primer-contenido-es.mp4')
+            self.assertNotContains(pagina_video, 'Elige idioma y calidad')
+            self.assertContains(
+                pagina_video,
+                f'href="{reverse("home")}?titulo={titulo.pk}"',
+            )
+            self.assertContains(pagina_video, 'Volver a Inicio')
+            self.assertContains(pagina_video, 'data-video-backward')
+            self.assertContains(pagina_video, 'data-video-forward')
+            self.assertContains(pagina_video, 'data-video-seek')
+            self.assertContains(pagina_video, 'data-video-mute')
+            self.assertContains(pagina_video, 'data-video-volume')
+            self.assertContains(pagina_video, 'accent-color: #e50914')
+            self.assertContains(pagina_video, 'video-volume-control:hover .video-volume')
+            self.assertContains(pagina_video, 'video-controls-hidden')
+            self.assertContains(pagina_video, '}, 3000)')
+            self.assertContains(pagina_video, 'margin-left: auto')
+            self.assertNotContains(pagina_video, '<video controls')
+            self.assertNotContains(pagina_video, 'Volver a Inicio</')
+            self.assertNotContains(pagina_video, '<nav class="navbar')
+            self.assertNotContains(pagina_video, '<footer')
+            self.assertContains(pagina_video, 'data-captions-toggle')
+            self.assertContains(pagina_video, 'data-captions-menu')
+            self.assertContains(pagina_video, 'Español')
+            self.assertContains(pagina_video, 'English')
+            self.assertContains(pagina_video, 'kind="subtitles"')
+            subtitulos = list(Subtitulo.objects.filter(contenido=primer_contenido))
+            self.assertEqual(len(subtitulos), 2)
+            subtitulo_ingles = next(
+                subtitulo for subtitulo in subtitulos
+                if subtitulo.idioma.nombre in {'Inglés', 'English'}
+            )
+            respuesta_subtitulo = self.client.get(
+                reverse(
+                    'servir_subtitulo',
+                    args=[titulo.pk, video_espanol.pk, subtitulo_ingles.pk],
+                ),
+            )
+            self.assertEqual(respuesta_subtitulo.status_code, 200)
+            self.assertEqual(
+                respuesta_subtitulo['Content-Type'],
+                'text/vtt; charset=utf-8',
+            )
+            self.assertTrue(respuesta_subtitulo.content.startswith(b'WEBVTT'))
+
+            respuesta_no_permitida = self.client.post(
+                reverse('reproducir_titulo', args=[titulo.pk]),
+                {
+                    'idioma': self.idioma.pk,
+                    'video': video_full_hd.pk,
+                },
+            )
+            self.assertContains(
+                respuesta_no_permitida,
+                'Selecciona un idioma y una calidad disponibles para tu plan.',
+            )
+            respuesta_directa_no_permitida = self.client.get(
+                reverse('reproducir_video', args=[titulo.pk, video_full_hd.pk]),
+            )
+            self.assertEqual(respuesta_directa_no_permitida.status_code, 404)
+        self.assertEqual(contenido_posterior.orden, 2)
+
+    def test_reproduccion_requiere_perfil_y_respeta_clasificacion_de_edad(self):
+        titulo = self.crear_titulo(
+            'Contenido restringido',
+            self.pelicula,
+            con_contenido=True,
+            edad_minima=18,
+        )
+        usuario = Usuario.objects.create_user(
+            username='perfil-reproduccion@example.com',
+            email='perfil-reproduccion@example.com',
+            password='UnaClave-larga-2026!',
+        )
+        self.client.force_login(usuario)
+
+        respuesta_sin_perfil = self.client.get(
+            reverse('reproducir_titulo', args=[titulo.pk]),
+        )
+
+        self.assertRedirects(
+            respuesta_sin_perfil,
+            reverse('perfiles'),
+            fetch_redirect_response=False,
+        )
+        self.autenticar_con_perfil(usuario, edad_max=17)
+        respuesta_restringida = self.client.get(
+            reverse('reproducir_titulo', args=[titulo.pk]),
+        )
+        self.assertEqual(respuesta_restringida.status_code, 404)
+
     def test_busqueda_por_elenco_devuelve_titulos_del_elenco_coincidente(self):
         titulo = self.crear_titulo(
             'Historia con actriz',
@@ -2455,6 +2746,11 @@ class HomeCarouselesTests(TestCase):
         respuesta = self.client.get(reverse('home'))
 
         self.assertContains(respuesta, 'data-title-details-open')
+        self.assertContains(respuesta, 'class="title-poster-play-link"')
+        self.assertContains(
+            respuesta,
+            f'href="{reverse("reproducir_titulo", args=[titulo.pk])}"',
+        )
         self.assertContains(respuesta, 'bi bi-list')
         self.assertContains(respuesta, 'role="dialog" aria-modal="true"')
         self.assertContains(respuesta, 'Imagen de la historia')
@@ -2614,8 +2910,13 @@ class HomeCarouselesTests(TestCase):
             contenidos[3]['descripcion'],
             'Descripción del episodio dos.',
         )
+        self.assertEqual(
+            contenidos[3]['reproducir_url'],
+            reverse('reproducir_contenido', args=[titulo.pk, segundo.pk]),
+        )
         self.assertContains(respuesta, 'data-title-details-contents')
         self.assertContains(respuesta, 'data-title-contents=')
+        self.assertContains(respuesta, 'item.href = content.reproducir_url')
 
         respuesta_busqueda = self.client.get(
             reverse('buscar_titulos'),
@@ -3251,6 +3552,12 @@ class HomeCarouselesTests(TestCase):
         self.assertContains(respuesta, 'aria-label="Puesto 10"')
         self.assertContains(respuesta, 'id="popular-list-title">Populares</h2>')
         self.assertContains(respuesta, 'class="popular-grid"')
+        self.assertNotContains(respuesta, 'class="title-poster-play-link"')
+        self.assertNotContains(respuesta, 'class="featured-banner-play-link"')
+        self.assertNotContains(
+            respuesta,
+            reverse('reproducir_titulo', args=[primer_titulo.pk]),
+        )
         self.assertNotContains(respuesta, 'class="title-carousel"')
         self.assertNotContains(respuesta, 'data-carousel-target="carousel-track')
 
@@ -3306,6 +3613,11 @@ class HomeCarouselesTests(TestCase):
         self.assertEqual(banners[0]['elenco'], ['Artista Demo'])
         self.assertTrue(banners[0]['imagen_url'].endswith('/media/demo/banners/reciente.svg'))
         self.assertContains(respuesta, 'data-featured-banner')
+        self.assertContains(respuesta, 'class="featured-banner-play-link"')
+        self.assertContains(
+            respuesta,
+            f'href="{reverse("reproducir_titulo", args=[reciente.pk])}"',
+        )
         self.assertContains(respuesta, 'Una aventura nueva para probar el carrusel.')
         self.assertContains(respuesta, 'Artista Demo')
 

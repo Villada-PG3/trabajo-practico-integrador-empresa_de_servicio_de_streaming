@@ -34,7 +34,7 @@ from django.db.models import (
     When,
 )
 from django.db.models.functions import Coalesce, Concat, NullIf, Trim
-from django.http import HttpResponse, JsonResponse
+from django.http import Http404, HttpResponse, JsonResponse
 from django.contrib.sessions.models import Session
 from django.shortcuts import redirect, render
 from django.urls import reverse
@@ -62,19 +62,23 @@ from .middleware import CLAVE_ADMISION_DISPOSITIVO_PENDIENTE
 from .models import (
     Categoria,
     Calificacion,
+    CalidadIdiomaContenido,
     CambioPlan,
     Cobro,
     EstadoCobro,
     Contenido,
+    Idioma,
     IdiomaContenido,
     IdiomaTitulo,
     Plan,
+    PlanCalidad,
     Perfil,
     PerfilTitulo,
     Porver,
     Precio,
     Registro,
     Suscripcion,
+    Subtitulo,
     Tarjeta,
     Titulo,
     TituloRolElenco,
@@ -316,6 +320,10 @@ def asignar_contenidos_detalle(titulos, idioma_id=None):
                 'duracion': duracion,
                 'imagen': imagen.imagen.url if imagen else '',
                 'mostrar_numero_episodio': mostrar_numero_episodio,
+                'reproducir_url': reverse(
+                    'reproducir_contenido',
+                    args=[titulo.pk, contenido.pk],
+                ),
             })
         titulo.contenidos_detalle_json = json.dumps(
             titulo.contenidos_detalle,
@@ -916,6 +924,10 @@ def buscar_titulos_view(request):
                 'imagen': default_storage.url(titulo.imagen_busqueda)
                 if titulo.imagen_busqueda else '',
                 'url': f"{reverse('home')}?titulo={titulo.pk}",
+                'reproducir_url': reverse(
+                    'reproducir_titulo',
+                    args=[titulo.pk],
+                ),
                 'toggle_url': reverse('toggle_mi_lista', args=[titulo.pk]),
                 'rating_url': reverse('calificar_titulo', args=[titulo.pk]),
                 'en_mi_lista': titulo.pk in titulos_guardados,
@@ -942,6 +954,280 @@ def buscar_titulos_view(request):
             for titulo in resultados_busqueda
         ],
     })
+
+
+@login_required
+@never_cache
+def reproducir_titulo_view(request, titulo_id, contenido_id=None):
+    perfil_activo = get_active_profile(request)
+    if perfil_activo is None:
+        return redirect('perfiles')
+
+    titulo = Titulo.objects.filter(
+        pk=titulo_id,
+        edad_minima__lte=perfil_activo.tipo_perfil.edad_max,
+    ).select_related('tipo_titulo').first()
+    if titulo is None:
+        raise Http404('No se encontró un título disponible para este perfil.')
+
+    contenidos = Contenido.objects.filter(titulo=titulo)
+    if contenido_id is not None:
+        contenido = contenidos.filter(pk=contenido_id).first()
+    else:
+        contenido = contenidos.order_by('seccion', 'orden', 'pk').first()
+    if contenido is None:
+        raise Http404('El título no tiene contenido disponible.')
+
+    suscripcion = obtener_suscripcion_activa(request.user)
+    if suscripcion is None:
+        messages.info(request, 'Necesitas una suscripción activa para reproducir contenido.')
+        return redirect('seleccionar_plan')
+
+    calidades_permitidas = PlanCalidad.objects.filter(
+        plan=suscripcion.plan,
+    ).values('calidad_id')
+    videos = CalidadIdiomaContenido.objects.filter(
+        idioma_contenido__contenido=contenido,
+        archivo__gt='',
+        calidad_id__in=calidades_permitidas,
+    ).select_related(
+        'idioma_contenido__idioma',
+        'calidad',
+    )
+    opciones_reproduccion = []
+    opciones_vistas = set()
+    for opcion in videos.order_by(
+        'calidad__nombre',
+        'idioma_contenido__idioma__nombre',
+        'pk',
+    ):
+        if not opcion.archivo.storage.exists(opcion.archivo.name):
+            continue
+        clave = (
+            opcion.idioma_contenido.idioma_id,
+            opcion.calidad_id,
+        )
+        if clave in opciones_vistas:
+            continue
+        opciones_vistas.add(clave)
+        opciones_reproduccion.append(opcion)
+
+    idiomas = {}
+    for opcion in opciones_reproduccion:
+        idioma = opcion.idioma_contenido.idioma
+        idiomas[idioma.pk] = idioma
+
+    idioma_seleccionado = str(request.user.idioma_id or '')
+    if idioma_seleccionado not in {str(pk) for pk in idiomas} and idiomas:
+        idioma_seleccionado = str(next(iter(idiomas)))
+    video_seleccionado = ''
+    if idioma_seleccionado:
+        calidad_inicial = next(
+            opcion for opcion in opciones_reproduccion
+            if opcion.idioma_contenido.idioma_id == int(idioma_seleccionado)
+        )
+        video_seleccionado = str(calidad_inicial.pk)
+
+    if request.method == 'POST':
+        idioma_seleccionado = request.POST.get('idioma', '')
+        video_seleccionado = request.POST.get('video', '')
+        opcion = next(
+            (
+                opcion for opcion in opciones_reproduccion
+                if str(opcion.idioma_contenido.idioma_id) == idioma_seleccionado
+                and str(opcion.pk) == video_seleccionado
+            ),
+            None,
+        )
+        if opcion is None:
+            messages.error(
+                request,
+                'Selecciona un idioma y una calidad disponibles para tu plan.',
+            )
+        else:
+            return redirect(
+                'reproducir_video',
+                titulo_id=titulo.pk,
+                video_id=opcion.pk,
+            )
+
+    return render(request, 'reproducir_titulo.html', {
+        'titulo': titulo,
+        'contenido': contenido,
+        'suscripcion': suscripcion,
+        'opciones_reproduccion': opciones_reproduccion,
+        'idiomas': idiomas.values(),
+        'idioma_seleccionado': idioma_seleccionado,
+        'video_seleccionado': video_seleccionado,
+    })
+
+
+@login_required
+@never_cache
+def reproducir_video_view(request, titulo_id, video_id):
+    perfil_activo = get_active_profile(request)
+    if perfil_activo is None:
+        return redirect('perfiles')
+
+    titulo = Titulo.objects.filter(
+        pk=titulo_id,
+        edad_minima__lte=perfil_activo.tipo_perfil.edad_max,
+    ).first()
+    if titulo is None:
+        raise Http404('No se encontró un título disponible para este perfil.')
+    video = CalidadIdiomaContenido.objects.filter(
+        pk=video_id,
+        idioma_contenido__contenido__titulo=titulo,
+    ).select_related(
+        'idioma_contenido__contenido',
+        'idioma_contenido__idioma',
+        'calidad',
+    ).first()
+    if video is None or not video.archivo:
+        raise Http404('No se encontró el video solicitado.')
+    contenido = video.idioma_contenido.contenido
+
+    suscripcion = obtener_suscripcion_activa(request.user)
+    if suscripcion is None:
+        messages.info(request, 'Necesitas una suscripción activa para reproducir contenido.')
+        return redirect('seleccionar_plan')
+    if not PlanCalidad.objects.filter(
+        plan=suscripcion.plan,
+        calidad=video.calidad,
+    ).exists():
+        raise Http404('La calidad seleccionada no está disponible en tu plan.')
+    if not video.archivo.storage.exists(video.archivo.name):
+        raise Http404('El archivo de video no está disponible.')
+
+    subtitulos = obtener_subtitulos_reproduccion(titulo, contenido)
+    for subtitulo in subtitulos:
+        idioma_normalizado = unicodedata.normalize(
+            'NFKD',
+            subtitulo.idioma.nombre,
+        ).encode('ascii', 'ignore').decode('ascii').casefold()
+        subtitulo.codigo_idioma = (
+            'en' if idioma_normalizado.startswith('ingles')
+            or idioma_normalizado.startswith('english')
+            else 'es' if idioma_normalizado.startswith('espanol')
+            or idioma_normalizado.startswith('spanish')
+            else idioma_normalizado[:2]
+        )
+        subtitulo.url = reverse(
+            'servir_subtitulo',
+            args=[titulo.pk, video.pk, subtitulo.pk],
+        )
+
+    return render(request, 'reproducir_video.html', {
+        'video': video,
+        'titulo': titulo,
+        'contenido': contenido,
+        'subtitulos': subtitulos,
+        'pagina_reproduccion': True,
+    })
+
+
+def obtener_subtitulos_reproduccion(titulo, contenido):
+    idiomas_objetivo = (
+        ('Español', ('espanol', 'spanish'), 'espanol'),
+        ('Inglés', ('ingles', 'english'), 'ingles'),
+    )
+    idiomas = list(Idioma.objects.all().order_by('nombre', 'pk'))
+    subtitulos = []
+
+    for nombre, aliases, archivo_slug in idiomas_objetivo:
+        idioma = next(
+            (
+                idioma for idioma in idiomas
+                if unicodedata.normalize(
+                    'NFKD',
+                    idioma.nombre,
+                ).encode('ascii', 'ignore').decode('ascii').casefold()
+                in aliases
+            ),
+            None,
+        )
+        if idioma is None:
+            idioma = Idioma.objects.create(nombre=nombre)
+            idiomas.append(idioma)
+
+        subtitulo = Subtitulo.objects.filter(
+            contenido=contenido,
+            idioma=idioma,
+        ).first()
+        if subtitulo is None:
+            ruta_subtitulo = (
+                f'subtitulo/titulo{titulo.pk}/contenido{contenido.pk}/'
+                f'{archivo_slug}.vtt'
+            )
+            if default_storage.exists(ruta_subtitulo):
+                with default_storage.open(ruta_subtitulo, 'rb') as archivo:
+                    archivo_vtt = archivo.read()
+            elif archivo_slug == 'ingles':
+                archivo_vtt = (
+                    b'WEBVTT\n\n00:00:01.000 --> 00:00:04.000\n'
+                    b'Demo subtitle in English.\n'
+                )
+            else:
+                archivo_vtt = (
+                    b'WEBVTT\n\n00:00:01.000 --> 00:00:04.000\n'
+                    b'Subtitulo de demostracion en espanol.\n'
+                )
+            subtitulo = Subtitulo.objects.create(
+                contenido=contenido,
+                idioma=idioma,
+                archivo_vtt=archivo_vtt,
+            )
+        subtitulos.append(subtitulo)
+
+    return subtitulos
+
+
+@login_required
+@never_cache
+def servir_subtitulo_view(request, titulo_id, video_id, subtitulo_id):
+    perfil_activo = get_active_profile(request)
+    if perfil_activo is None:
+        return redirect('perfiles')
+
+    titulo = Titulo.objects.filter(
+        pk=titulo_id,
+        edad_minima__lte=perfil_activo.tipo_perfil.edad_max,
+    ).first()
+    if titulo is None:
+        raise Http404('No se encontró un título disponible para este perfil.')
+
+    video = CalidadIdiomaContenido.objects.filter(
+        pk=video_id,
+        idioma_contenido__contenido__titulo=titulo,
+        archivo__gt='',
+    ).select_related('calidad').first()
+    if video is None:
+        raise Http404('No se encontró el video solicitado.')
+    contenido = video.idioma_contenido.contenido
+
+    suscripcion = obtener_suscripcion_activa(request.user)
+    if suscripcion is None:
+        messages.info(request, 'Necesitas una suscripción activa para reproducir contenido.')
+        return redirect('seleccionar_plan')
+    if not PlanCalidad.objects.filter(
+        plan=suscripcion.plan,
+        calidad=video.calidad,
+    ).exists():
+        raise Http404('La calidad seleccionada no está disponible en tu plan.')
+
+    subtitulo = Subtitulo.objects.filter(
+        pk=subtitulo_id,
+        contenido=contenido,
+    ).first()
+    if subtitulo is None:
+        raise Http404('No se encontró el subtítulo solicitado.')
+
+    response = HttpResponse(
+        bytes(subtitulo.archivo_vtt),
+        content_type='text/vtt; charset=utf-8',
+    )
+    response['X-Content-Type-Options'] = 'nosniff'
+    return response
 
 
 @login_required

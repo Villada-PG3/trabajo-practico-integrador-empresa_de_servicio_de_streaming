@@ -1,10 +1,15 @@
-from django.db.models import *
-from django.db import models
-from django.contrib.auth.models import AbstractUser
-from phonenumber_field.modelfields import PhoneNumberField
 from django.conf import settings
-from django.core.validators import MaxValueValidator, MinValueValidator, RegexValidator
+from django.contrib.auth.models import AbstractUser
+from django.core.validators import (
+    FileExtensionValidator,
+    MaxValueValidator,
+    MinValueValidator,
+    RegexValidator,
+)
+from django.db import models
+from django.db.models import *
 from django.utils import timezone
+from phonenumber_field.modelfields import PhoneNumberField
 
 class Pais(models.Model):
     nombre = models.CharField(max_length=100)
@@ -176,7 +181,13 @@ class IdiomaContenido(models.Model):
 class CalidadIdiomaContenido(models.Model):
     idioma_contenido = models.ForeignKey(IdiomaContenido, on_delete=models.CASCADE, related_name='calidades')
     calidad = models.ForeignKey(Calidad, on_delete=models.PROTECT, related_name='calidad_idioma_contenidos')
-    archivo = models.BinaryField()
+    archivo_legacy = models.BinaryField()
+    archivo = models.FileField(
+        upload_to='videos/',
+        blank=True,
+        verbose_name='Archivo MP4',
+        validators=[FileExtensionValidator(allowed_extensions=['mp4'])],
+    )
 
     def __str__(self):
         return f'{self.idioma_contenido} - {self.calidad}'

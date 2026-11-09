@@ -266,6 +266,12 @@
             background: rgba(255, 255, 255, 0.04);
         }
 
+        a.title-details-content-item:hover,
+        a.title-details-content-item:focus-visible {
+            border-color: rgba(255, 255, 255, 0.45);
+            background: rgba(255, 255, 255, 0.09);
+        }
+
         .title-details-content-image,
         .title-details-content-image-placeholder {
             width: 100%;
@@ -563,6 +569,7 @@
 </head>
 <body>
 
+    {% if not pagina_reproduccion %}
     <!-- Header / Navbar -->
 <header>
     <nav class="navbar navbar-expand-lg navbar-dark navbar-netflix fixed-top px-4">
@@ -678,6 +685,7 @@
 </header>
 
     <div style="margin-top: 70px;"></div>
+    {% endif %}
 
     {% if messages %}
         <div class="container mt-3">
@@ -717,7 +725,7 @@
     {% include "partials/title_details.html" %}
     {% endif %}
 
-    {% if not pagina_perfiles %}
+    {% if not pagina_perfiles and not pagina_reproduccion %}
     <footer class="py-5 mt-auto">
         <div class="container">
             <p class="mb-4">¿Preguntas? Llama al 0800-123-4567</p>
@@ -895,8 +903,10 @@
                                 mark.textContent = resultado.nombre.slice(0, 1).toUpperCase();
                                 poster.append(mark);
                             }
-                            const nombre = document.createElement('span');
-                            nombre.className = 'd-flex align-items-center fw-semibold pt-2';
+                            const nombre = document.createElement('a');
+                            nombre.href = resultado.reproducir_url;
+                            nombre.className =
+                                'd-flex align-items-center fw-semibold pt-2 text-white text-decoration-none';
                             nombre.textContent = resultado.nombre;
                             if (resultado.estrellas_promedio) {
                                 const rating = document.createElement('span');
@@ -958,6 +968,7 @@
                             detailsButton.dataset.titleAveragePercent =
                                 resultado.porcentaje_promedio;
                             detailsButton.dataset.titleInList = String(resultado.en_mi_lista);
+                            detailsButton.dataset.titlePlayUrl = resultado.reproducir_url;
                             detailsButton.dataset.titleToggleUrl = resultado.toggle_url;
                             detailsButton.dataset.titleRatingUrl = resultado.rating_url;
                             detailsButton.setAttribute(
