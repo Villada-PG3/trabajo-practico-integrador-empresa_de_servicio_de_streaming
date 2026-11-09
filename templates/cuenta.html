@@ -41,7 +41,7 @@
     }
 
     .account-data-label {
-        color: rgba(255, 255, 255, 0.62);
+        color: rgba(255, 255, 255, 0.84);
     }
 
     .account-data-value {
@@ -50,12 +50,18 @@
     }
 
     .account-subscription-value {
-        color: var(--bs-info);
+        color: #bde7f5;
     }
 
     .account-legal h3 {
         margin-top: 1.75rem;
         font-size: 1.1rem;
+        color: #d7eff8;
+    }
+
+    .account-legal p {
+        color: rgba(255, 255, 255, 0.9);
+        line-height: 1.65;
     }
 
     @media (max-width: 767.98px) {
@@ -224,13 +230,26 @@
 
                             <dt class="col-sm-5 text-white-50">Tarjeta asociada</dt>
                             <dd class="col-sm-7 account-subscription-value">
-                                {% if ultimo_cobro %}
-                                    {{ ultimo_cobro.tarjeta.marca_tarjeta.nombre }} terminada en {{ ultimo_cobro.tarjeta.numero|slice:"-4:" }}
+                                {% if suscripcion.tarjeta %}
+                                    {{ suscripcion.tarjeta.marca_tarjeta.nombre }} terminada en {{ suscripcion.tarjeta.numero|slice:"-4:" }}
                                 {% else %}
-                                    No hay cobros registrados.
+                                    No hay una tarjeta asignada a la suscripción.
                                 {% endif %}
                             </dd>
                         </dl>
+                        {% if cambio_plan_pendiente %}
+                            <div class="alert alert-info mt-3 mb-0" role="status">
+                                El cambio al plan
+                                <strong>{{ cambio_plan_pendiente.plan.nombre }}</strong>
+                                se pondrá en vigencia en la fecha del próximo cobro:
+                                <strong>{{ cambio_plan_pendiente.fecha_aplicacion|date:"d/m/Y" }}</strong>.
+                            </div>
+                        {% elif suscripcion.habilitado %}
+                            <div class="text-end mt-4">
+                                <a class="btn btn-netflix"
+                                   href="{% url 'seleccionar_plan' %}?cambiar=1">Cambiar Plan</a>
+                            </div>
+                        {% endif %}
                     {% else %}
                         <p class="text-white-50 mb-0">Esta cuenta no tiene suscripciones registradas.</p>
                     {% endif %}

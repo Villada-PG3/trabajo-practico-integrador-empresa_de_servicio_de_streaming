@@ -562,7 +562,7 @@ class Command(BaseCommand):
             defaults={'fecha_vigencia': hoy, 'habilitado': True},
         )
         estado_cobro, _ = EstadoCobro.objects.get_or_create(
-            nombre='Aprobado (demo)',
+            nombre='Aprobado',
             defaults={'descripcion': 'Estado ficticio para una prueba local.'},
         )
         marca, _ = MarcaTarjeta.objects.get_or_create(
@@ -577,7 +577,7 @@ class Command(BaseCommand):
             defaults={'descripcion': 'Método ficticio para datos locales.'},
         )
         tarjeta, _ = Tarjeta.objects.get_or_create(
-            numero='0000000000000000',
+            numero='0000',
             nombre_titular='USUARIO DE PRUEBA',
             defaults={
                 'fecha_vencimiento': date(hoy.year + 2, hoy.month, 1),
@@ -586,6 +586,9 @@ class Command(BaseCommand):
                 'habilitado': True,
             },
         )
+        if suscripcion.tarjeta_id != tarjeta.pk:
+            suscripcion.tarjeta = tarjeta
+            suscripcion.save(update_fields=['tarjeta'])
         Cobro.objects.get_or_create(
             num_factura=990001,
             defaults={

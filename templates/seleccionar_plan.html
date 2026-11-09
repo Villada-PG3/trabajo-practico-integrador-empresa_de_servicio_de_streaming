@@ -5,12 +5,19 @@
 {% block content %}
 <div class="container py-5">
     <div class="text-center mb-4">
-        <h1 class="fw-bold">Elige tu plan</h1>
-        <p class="text-secondary">Selecciona un plan disponible para asociarlo a tu cuenta.</p>
+        <h1 class="fw-bold">{% if cambiar_plan %}Cambiar plan{% else %}Elige tu plan{% endif %}</h1>
+        <p class="text-secondary">
+            {% if cambiar_plan %}
+                El nuevo plan se aplicará en el próximo cobro, el {{ fecha_aplicacion|date:"d/m/Y" }}.
+                Selecciona un plan para continuar con la simulación de pago.
+            {% else %}
+                Selecciona un plan disponible para asociarlo a tu cuenta.
+            {% endif %}
+        </p>
     </div>
 
     {% if planes %}
-        <form method="post">
+        <form method="post"{% if cambiar_plan %} action="{% url 'seleccionar_plan' %}?cambiar=1"{% endif %}>
             {% csrf_token %}
             <div class="row g-4 justify-content-center">
                 {% for item in planes %}
@@ -30,12 +37,18 @@
                 {% endfor %}
             </div>
             <div class="text-center mt-4">
-                <button type="submit" class="btn btn-netflix btn-lg">Confirmar plan</button>
+                <button type="submit" class="btn btn-netflix btn-lg">
+                    {% if cambiar_plan %}Continuar{% else %}Confirmar plan{% endif %}
+                </button>
             </div>
         </form>
     {% else %}
         <div class="alert alert-secondary text-center">
-            No hay planes con precios vigentes para elegir. Contacta con el administrador del servicio.
+            {% if cambiar_plan %}
+                No hay otros planes con precios vigentes para elegir.
+            {% else %}
+                No hay planes con precios vigentes para elegir. Contacta con el administrador del servicio.
+            {% endif %}
         </div>
     {% endif %}
 </div>

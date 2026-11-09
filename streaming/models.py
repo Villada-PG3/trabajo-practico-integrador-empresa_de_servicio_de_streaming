@@ -3,7 +3,8 @@ from django.db import models
 from django.contrib.auth.models import AbstractUser
 from phonenumber_field.modelfields import PhoneNumberField
 from django.conf import settings
-from django.core.validators import MaxValueValidator, MinValueValidator
+from django.core.validators import MaxValueValidator, MinValueValidator, RegexValidator
+from django.utils import timezone
 
 class Pais(models.Model):
     nombre = models.CharField(max_length=100)
@@ -239,7 +240,12 @@ class MetodoPago(models.Model):
 
 
 class Tarjeta(models.Model):
-    numero = models.CharField(max_length=30)
+    numero = models.CharField(
+        max_length=4,
+        validators=[
+            RegexValidator(r'^[0-9]{4}$', 'La tarjeta debe guardar solo 4 dígitos.'),
+        ],
+    )
     nombre_titular = models.CharField(max_length=150)
     fecha_vencimiento = models.DateField()
     marca_tarjeta = models.ForeignKey(MarcaTarjeta, on_delete=models.PROTECT, related_name='tarjetas')
@@ -297,9 +303,59 @@ class Suscripcion(models.Model):
     fecha_vigencia = models.DateField(blank=True, null=True)
     fecha_cancelacion = models.DateField(blank=True, null=True)
     habilitado = models.BooleanField(default=True)
+    tarjeta = models.ForeignKey(
+        'Tarjeta',
+        on_delete=models.PROTECT,
+        related_name='suscripciones',
+        blank=True,
+        null=True,
+    )
 
     def __str__(self):
         return f'{self.usuario} - {self.plan}'
+
+
+class CambioPlan(models.Model):
+    ESTADO_PENDIENTE = 'pendiente'
+    ESTADO_APLICADO = 'aplicado'
+    ESTADO_CANCELADO = 'cancelado'
+    ESTADOS = [
+        (ESTADO_PENDIENTE, 'Pendiente'),
+        (ESTADO_APLICADO, 'Aplicado'),
+        (ESTADO_CANCELADO, 'Cancelado'),
+    ]
+
+    suscripcion = models.ForeignKey(
+        Suscripcion,
+        on_delete=models.CASCADE,
+        related_name='cambios_programados',
+    )
+    plan = models.ForeignKey(
+        Plan,
+        on_delete=models.PROTECT,
+        related_name='cambios_programados',
+    )
+    fecha_aplicacion = models.DateField()
+    nombre_titular = models.CharField(max_length=150)
+    tarjeta_ultimos4 = models.CharField(max_length=4)
+    estado = models.CharField(
+        max_length=12,
+        choices=ESTADOS,
+        default=ESTADO_PENDIENTE,
+    )
+    creado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['suscripcion'],
+                condition=models.Q(estado='pendiente'),
+                name='unique_pending_plan_change_per_subscription',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.suscripcion} - {self.plan} ({self.fecha_aplicacion})'
 
 
 class EstadoCobro(models.Model):
@@ -319,6 +375,14 @@ class Cobro(models.Model):
     tarjeta = models.ForeignKey(Tarjeta, on_delete=models.PROTECT, related_name='cobros')
     numero_autorizacion = models.CharField(max_length=100, blank=True, null=True)
     monto = models.FloatField()
+    fecha_hora_creacion = models.DateTimeField(default=timezone.now)
+    cambio_plan = models.ForeignKey(
+        CambioPlan,
+        on_delete=models.SET_NULL,
+        related_name='cobros',
+        blank=True,
+        null=True,
+    )
 
     def __str__(self):
         return f'Factura {self.num_factura} - {self.suscripcion}' 

@@ -1,4 +1,3 @@
-import calendar
 import json
 from datetime import date
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
@@ -24,6 +23,7 @@ from django.db.models import (
     F,
     FloatField,
     IntegerField,
+    Max,
     OuterRef,
     Prefetch,
     Q,
@@ -48,10 +48,20 @@ from .forms import (
     PerfilForm,
     RegistroForm,
     ReporteVentasFiltroForm,
+    TarjetaDemoPlanForm,
+)
+from .billing import (
+    calcular_proximo_cobro,
+    fecha_inicio_suscripcion,
+    guardar_tarjeta_demo,
+    suscripcion_activa,
 )
 from .models import (
     Categoria,
     Calificacion,
+    CambioPlan,
+    Cobro,
+    EstadoCobro,
     Contenido,
     IdiomaContenido,
     IdiomaTitulo,
@@ -62,6 +72,7 @@ from .models import (
     Precio,
     Registro,
     Suscripcion,
+    Tarjeta,
     Titulo,
 )
 
@@ -145,17 +156,6 @@ def cerrar_sesiones_excepto(usuario, session_key):
         usuario=usuario,
         estado=True,
     ).exclude(token_disp=session_key).update(estado=False)
-
-
-def calcular_proximo_cobro(fecha_vigencia):
-    if fecha_vigencia is None:
-        return None
-
-    mes_siguiente = fecha_vigencia.year * 12 + fecha_vigencia.month
-    anio, mes = divmod(mes_siguiente, 12)
-    mes += 1
-    ultimo_dia = calendar.monthrange(anio, mes)[1]
-    return date(anio, mes, min(fecha_vigencia.day, ultimo_dia))
 
 
 def active_profile(request):
@@ -1182,10 +1182,11 @@ def registro_view(request):
     initial = {'email': request.GET.get('email', '').strip().lower()}
     form = RegistroForm(request.POST or None, initial=initial)
     if request.method == 'POST' and form.is_valid():
-        user = form.save()
+        with transaction.atomic():
+            user = form.save()
         login(request, user)
         registrar_sesion_usuario(request, user)
-        return redirect('crear_perfil')
+        return redirect('seleccionar_plan')
     return render(request, 'registro.html', {'form': form})
 
 
@@ -1212,6 +1213,14 @@ def cuenta_view(request):
         .prefetch_related('plan__plan_calidades__calidad')
         .order_by('-fecha_inscripcion', '-pk')
         .first()
+    )
+    cambio_plan_pendiente = (
+        suscripcion.cambios_programados.filter(
+            estado=CambioPlan.ESTADO_PENDIENTE,
+        )
+        .select_related('plan')
+        .first()
+        if suscripcion is not None else None
     )
     precio_actual = None
     ultimo_cobro = None
@@ -1244,6 +1253,7 @@ def cuenta_view(request):
         ).count(),
         'sesiones_abiertas': contar_sesiones_abiertas(request, request.user),
         'suscripcion': suscripcion,
+        'cambio_plan_pendiente': cambio_plan_pendiente,
         'proximo_cobro': (
             calcular_proximo_cobro(suscripcion.fecha_vigencia)
             if suscripcion is not None else None
@@ -1391,6 +1401,18 @@ def configurar_perfil_view(request, perfil_id):
     })
 
 
+def obtener_suscripcion_activa(usuario):
+    suscripciones = (
+        Suscripcion.objects.filter(usuario=usuario, habilitado=True)
+        .select_related('plan')
+        .order_by('-fecha_inscripcion', '-pk')
+    )
+    return next(
+        (suscripcion for suscripcion in suscripciones if suscripcion_activa(suscripcion)),
+        None,
+    )
+
+
 @login_required
 def desactivar_perfil_view(request, perfil_id):
     perfil = Perfil.objects.filter(
@@ -1434,9 +1456,18 @@ def seleccionar_plan_view(request):
         .order_by('nombre')
     )
 
-    if Suscripcion.objects.filter(usuario=request.user, habilitado=True).exists():
+    cambiar_plan = request.GET.get('cambiar') == '1'
+    suscripcion_actual = obtener_suscripcion_activa(request.user)
+    if suscripcion_actual and not cambiar_plan:
         messages.info(request, 'Tu cuenta ya tiene una suscripción activa.')
         return redirect('home')
+    if suscripcion_actual and suscripcion_actual.cambios_programados.filter(
+        estado=CambioPlan.ESTADO_PENDIENTE,
+    ).exists():
+        messages.info(request, 'Ya tienes un cambio de plan pendiente.')
+        return redirect(f'{reverse("cuenta")}?seccion=suscripcion')
+    if cambiar_plan and suscripcion_actual:
+        planes = planes.exclude(pk=suscripcion_actual.plan_id)
 
     if request.method == 'POST':
         plan_id = request.POST.get('plan')
@@ -1445,14 +1476,16 @@ def seleccionar_plan_view(request):
         except (Plan.DoesNotExist, ValueError, TypeError):
             messages.error(request, 'Selecciona un plan disponible para continuar.')
         else:
-            Suscripcion.objects.create(
-                usuario=request.user,
-                plan=plan,
-                fecha_inscripcion=hoy,
-                fecha_vigencia=hoy,
-            )
-            messages.success(request, 'Tu plan quedó asociado a la cuenta.')
-            return redirect('home')
+            if cambiar_plan and suscripcion_actual:
+                if plan.pk == suscripcion_actual.plan_id:
+                    messages.error(request, 'Selecciona un plan distinto al actual.')
+                else:
+                    return redirect(
+                        'pagar_cambio_plan',
+                        plan_id=plan.pk,
+                    )
+            else:
+                return redirect('pagar_suscripcion', plan_id=plan.pk)
 
     planes_con_precio = []
     for plan in planes:
@@ -1464,7 +1497,171 @@ def seleccionar_plan_view(request):
         if precio_actual:
             planes_con_precio.append({'plan': plan, 'precio': precio_actual})
 
-    return render(request, 'seleccionar_plan.html', {'planes': planes_con_precio})
+    fecha_aplicacion = hoy
+    if suscripcion_actual:
+        fecha_aplicacion = (
+            calcular_proximo_cobro(suscripcion_actual.fecha_vigencia) or hoy
+        )
+    return render(request, 'seleccionar_plan.html', {
+        'planes': planes_con_precio,
+        'cambiar_plan': cambiar_plan,
+        'suscripcion_actual': suscripcion_actual,
+        'fecha_aplicacion': fecha_aplicacion,
+    })
+
+
+@login_required
+def pagar_suscripcion_view(request, plan_id):
+    hoy = timezone.localdate()
+    if obtener_suscripcion_activa(request.user) is not None:
+        messages.info(request, 'Tu cuenta ya tiene una suscripción activa.')
+        return redirect('home')
+
+    precio = Precio.objects.filter(
+        plan_id=plan_id,
+        fecha_inicio__lte=hoy,
+    ).filter(
+        Q(fecha_fin__isnull=True) | Q(fecha_fin__gte=hoy),
+    ).order_by('-fecha_inicio', '-pk').first()
+    if precio is None:
+        messages.error(request, 'El plan seleccionado ya no está disponible.')
+        return redirect('seleccionar_plan')
+
+    form = TarjetaDemoPlanForm(request.POST or None)
+    if request.method == 'POST' and form.is_valid():
+        with transaction.atomic():
+            if obtener_suscripcion_activa(request.user) is not None:
+                messages.info(request, 'Tu cuenta ya tiene una suscripción activa.')
+                return redirect('home')
+            fecha_inicio = fecha_inicio_suscripcion(request.user, hoy)
+            tarjeta = guardar_tarjeta_demo(
+                form.cleaned_data['nombre_titular'],
+                form.cleaned_data['numero_tarjeta'],
+                form.cleaned_data['marca_tarjeta'],
+                form.cleaned_data['metodo_pago'],
+                hoy,
+            )
+            suscripcion = Suscripcion.objects.create(
+                usuario=request.user,
+                plan=precio.plan,
+                fecha_inscripcion=fecha_inicio,
+                fecha_vigencia=fecha_inicio,
+                tarjeta=tarjeta,
+            )
+            por_aprobar, _ = EstadoCobro.objects.get_or_create(
+                nombre='Por aprobar',
+                defaults={'descripcion': 'Cobro demo en proceso de aprobación.'},
+            )
+            numero_factura = (
+                Cobro.objects.aggregate(ultimo=Max('num_factura'))['ultimo'] or 0
+            ) + 1
+            Cobro.objects.create(
+                num_factura=numero_factura,
+                suscripcion=suscripcion,
+                fecha_cobro=fecha_inicio,
+                estado_cobro=por_aprobar,
+                tarjeta=tarjeta,
+                monto=precio.precio,
+            )
+        messages.success(
+            request,
+            'Tu suscripción quedó registrada y el cobro está por aprobar. '
+            'Esta simulación no procesa pagos reales.',
+        )
+        return redirect('crear_perfil')
+
+    return render(request, 'pagar_cambio_plan.html', {
+        'form': form,
+        'plan': precio.plan,
+        'precio': precio,
+        'fecha_aplicacion': fecha_inicio_suscripcion(request.user, hoy),
+        'suscripcion_inicial': True,
+    })
+
+
+@login_required
+def pagar_cambio_plan_view(request, plan_id):
+    hoy = timezone.localdate()
+    suscripcion = (
+        Suscripcion.objects.filter(usuario=request.user, habilitado=True)
+        .select_related('plan')
+        .order_by('-fecha_inscripcion', '-pk')
+        .first()
+    )
+    if suscripcion is None:
+        messages.error(request, 'No tienes una suscripción activa para cambiar.')
+        return redirect('seleccionar_plan')
+
+    if suscripcion.cambios_programados.filter(
+        estado=CambioPlan.ESTADO_PENDIENTE,
+    ).exists():
+        messages.info(request, 'Ya tienes un cambio de plan pendiente.')
+        return redirect(f'{reverse("cuenta")}?seccion=suscripcion')
+
+    precio_vigente = Precio.objects.filter(
+        plan_id=plan_id,
+        fecha_inicio__lte=hoy,
+    ).filter(
+        Q(fecha_fin__isnull=True) | Q(fecha_fin__gte=hoy),
+    ).order_by('-fecha_inicio', '-pk').first()
+    plan = precio_vigente.plan if precio_vigente else None
+    if plan is None or plan.pk == suscripcion.plan_id:
+        messages.error(request, 'Selecciona un plan distinto con precio vigente.')
+        return redirect(f'{reverse("seleccionar_plan")}?cambiar=1')
+
+    fecha_aplicacion = calcular_proximo_cobro(
+        suscripcion.fecha_vigencia,
+    ) or hoy
+    form = TarjetaDemoPlanForm(request.POST or None)
+    if request.method == 'POST' and form.is_valid():
+        with transaction.atomic():
+            suscripcion = Suscripcion.objects.select_for_update().get(
+                pk=suscripcion.pk,
+                usuario=request.user,
+                habilitado=True,
+            )
+            if suscripcion.plan_id == plan.pk:
+                messages.error(request, 'El plan seleccionado ya es tu plan actual.')
+                return redirect(f'{reverse("seleccionar_plan")}?cambiar=1')
+            if suscripcion.cambios_programados.filter(
+                estado=CambioPlan.ESTADO_PENDIENTE,
+            ).exists():
+                messages.info(request, 'Ya tienes un cambio de plan pendiente.')
+                return redirect(f'{reverse("cuenta")}?seccion=suscripcion')
+            fecha_aplicacion = calcular_proximo_cobro(
+                suscripcion.fecha_vigencia,
+            ) or hoy
+            tarjeta = guardar_tarjeta_demo(
+                form.cleaned_data['nombre_titular'],
+                form.cleaned_data['numero_tarjeta'],
+                form.cleaned_data['marca_tarjeta'],
+                form.cleaned_data['metodo_pago'],
+                hoy,
+            )
+            suscripcion.tarjeta = tarjeta
+            suscripcion.save(update_fields=['tarjeta'])
+            CambioPlan.objects.create(
+                suscripcion=suscripcion,
+                plan=plan,
+                fecha_aplicacion=fecha_aplicacion,
+                nombre_titular=form.cleaned_data['nombre_titular'],
+                tarjeta_ultimos4=tarjeta.numero,
+            )
+        messages.success(
+            request,
+            f'El cambio a {plan.nombre} se pondrá en vigencia en la fecha del '
+            f'próximo cobro: {fecha_aplicacion:%d/%m/%Y}. '
+            'El cobro de demostración quedará por aprobar.',
+        )
+        return redirect(f'{reverse("cuenta")}?seccion=suscripcion')
+
+    return render(request, 'pagar_cambio_plan.html', {
+        'form': form,
+        'plan': plan,
+        'suscripcion': suscripcion,
+        'fecha_aplicacion': fecha_aplicacion,
+        'precio': precio_vigente,
+    })
 
 
 def reporte_ventas_view(request):

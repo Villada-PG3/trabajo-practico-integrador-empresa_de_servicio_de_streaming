@@ -44,7 +44,7 @@ class Command(BaseCommand):
             defaults={'precio': 4.99},
         )
         estado_cobro, _ = EstadoCobro.objects.get_or_create(
-            nombre='Aprobado (demo)',
+            nombre='Aprobado',
             defaults={'descripcion': 'Estado ficticio para una prueba local.'},
         )
         marca_demo, _ = MarcaTarjeta.objects.get_or_create(
@@ -78,21 +78,29 @@ class Command(BaseCommand):
                 )
                 suscripciones_creadas += 1
 
+            nombre_titular = f'DEMO - {usuario.username}'[:150]
+            tarjeta = suscripcion.tarjeta
+            if tarjeta is None:
+                ultimo_cobro = suscripcion.cobros.order_by(
+                    '-fecha_cobro',
+                    '-pk',
+                ).first()
+                tarjeta = ultimo_cobro.tarjeta if ultimo_cobro else None
+            if tarjeta is None:
+                tarjeta = Tarjeta.objects.create(
+                    numero='0000',
+                    nombre_titular=nombre_titular,
+                    fecha_vencimiento=date(hoy.year + 2, hoy.month, 1),
+                    marca_tarjeta=marca_demo,
+                    metodo_pago=metodo_demo,
+                    habilitado=True,
+                )
+            if suscripcion.tarjeta_id != tarjeta.pk:
+                suscripcion.tarjeta = tarjeta
+                suscripcion.save(update_fields=['tarjeta'])
             if suscripcion.cobros.exists():
                 cuentas_completadas += 1
                 continue
-
-            nombre_titular = f'DEMO - {usuario.username}'[:150]
-            tarjeta, _ = Tarjeta.objects.get_or_create(
-                numero='0000000000000000',
-                nombre_titular=nombre_titular,
-                defaults={
-                    'fecha_vencimiento': date(hoy.year + 2, hoy.month, 1),
-                    'marca_tarjeta': marca_demo,
-                    'metodo_pago': metodo_demo,
-                    'habilitado': True,
-                },
-            )
             precio_actual = (
                 Precio.objects.filter(
                     plan=suscripcion.plan,

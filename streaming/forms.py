@@ -2,14 +2,25 @@ from django import forms
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
+from django.core.validators import RegexValidator
 from phonenumber_field.formfields import PhoneNumberField
 
-from .models import Idioma, Imagen, Pais, Perfil, TipoPerfil
+from .billing import normalizar_numero_tarjeta, numero_tarjeta_valido
+from .models import (
+    Idioma,
+    Imagen,
+    MarcaTarjeta,
+    MetodoPago,
+    Pais,
+    Perfil,
+    TipoPerfil,
+)
 
 Usuario = get_user_model()
 
 
 class RegistroForm(forms.Form):
+    username = forms.CharField(label='Nombre de usuario', max_length=150)
     email = forms.EmailField(label='Correo electrónico')
     password = forms.CharField(
         label='Contraseña',
@@ -45,6 +56,10 @@ class RegistroForm(forms.Form):
             'placeholder': 'Ingresa tu email',
             'autocomplete': 'email',
         })
+        self.fields['username'].widget.attrs.update({
+            'placeholder': 'Elige un nombre de usuario',
+            'autocomplete': 'username',
+        })
         self.fields['password'].widget.attrs.update({
             'placeholder': 'Crea tu contraseña',
             'autocomplete': 'new-password',
@@ -60,11 +75,18 @@ class RegistroForm(forms.Form):
             raise forms.ValidationError('Ya existe una cuenta asociada a este correo.')
         return email
 
+    def clean_username(self):
+        username = self.cleaned_data['username'].strip()
+        if Usuario.objects.filter(username__iexact=username).exists():
+            raise forms.ValidationError('Ese nombre de usuario ya está en uso.')
+        return username
+
     def clean_password(self):
         password = self.cleaned_data['password']
+        username = self.cleaned_data.get('username')
         email = self.cleaned_data.get('email')
-        if email:
-            user = Usuario(username=email, email=email)
+        if username and email:
+            user = Usuario(username=username, email=email)
             try:
                 validate_password(password, user)
             except ValidationError as error:
@@ -76,7 +98,7 @@ class RegistroForm(forms.Form):
             raise ValueError('No se puede crear la cuenta con un formulario inválido.')
         data = self.cleaned_data
         return Usuario.objects.create_user(
-            username=data['email'],
+            username=data['username'],
             email=data['email'],
             password=data['password'],
             telefono=data['telefono'] or '',
@@ -236,6 +258,85 @@ class EditarCuentaForm(forms.Form):
             setattr(self.usuario, self.campo, valor or '')
             self.usuario.save(update_fields=[self.campo])
         return self.usuario
+
+
+class TarjetaDemoPlanForm(forms.Form):
+    nombre_titular = forms.CharField(
+        label='Nombre del titular',
+        max_length=150,
+    )
+    numero_tarjeta = forms.CharField(
+        label='Número de tarjeta de prueba',
+        max_length=23,
+        widget=forms.TextInput(attrs={
+            'inputmode': 'numeric',
+            'autocomplete': 'off',
+            'placeholder': '4111 1111 1111 1111',
+        }),
+    )
+    cvv = forms.CharField(
+        label='CVV ficticio',
+        max_length=4,
+        min_length=3,
+        validators=[
+            RegexValidator(
+                r'^[0-9]{3,4}$',
+                'Ingresa un CVV ficticio de 3 o 4 dígitos.',
+            ),
+        ],
+        widget=forms.PasswordInput(attrs={
+            'inputmode': 'numeric',
+            'autocomplete': 'off',
+            'placeholder': '123',
+        }),
+    )
+    marca_tarjeta = forms.ModelChoiceField(
+        label='Marca de la tarjeta',
+        queryset=MarcaTarjeta.objects.none(),
+        empty_label='Selecciona una marca',
+    )
+    metodo_pago = forms.ModelChoiceField(
+        label='Método de pago',
+        queryset=MetodoPago.objects.none(),
+        empty_label='Selecciona débito o crédito',
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['marca_tarjeta'].queryset = MarcaTarjeta.objects.filter(
+            nombre__in=(
+                'Visa',
+                'Mastercard',
+                'American Express',
+                'Discover',
+                'Diners Club',
+            ),
+        ).order_by('nombre')
+        self.fields['metodo_pago'].queryset = MetodoPago.objects.filter(
+            nombre__in=('Débito', 'Crédito'),
+        ).order_by('nombre')
+        for field in self.fields.values():
+            field.widget.attrs['class'] = (
+                'form-control bg-secondary text-white border-0 py-2'
+            )
+        for field_name in ('marca_tarjeta', 'metodo_pago'):
+            self.fields[field_name].widget.attrs['class'] = (
+                'form-select bg-secondary text-white border-0 py-2'
+            )
+        self.fields['nombre_titular'].widget.attrs.update({
+            'autocomplete': 'cc-name',
+        })
+
+    def clean_numero_tarjeta(self):
+        numero = normalizar_numero_tarjeta(
+            self.cleaned_data['numero_tarjeta'],
+        )
+        if not numero_tarjeta_valido(numero):
+            raise forms.ValidationError(
+                'Ingresa un número de tarjeta ficticio válido según Luhn '
+                '(entre 12 y 19 dígitos).'
+            )
+        return numero
 
 
 class LoginForm(forms.Form):
