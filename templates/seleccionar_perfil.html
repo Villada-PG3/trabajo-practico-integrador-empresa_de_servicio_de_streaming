@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}¿Quién está viendo ahora? - RedFlix{% endblock %}
+
+{% block content %}
+<div class="container d-flex flex-column align-items-center justify-content-center py-5 text-white" style="min-height: 80vh;">
+    <h1 class="display-4 fw-bold mb-5">¿Quién está viendo ahora?</h1>
+
+    <div class="d-flex flex-wrap justify-content-center gap-4 mb-5">
+        {% for perfil in perfiles %}
+            <a href="{% url 'catalogo' perfil.id %}" class="text-decoration-none text-center text-white profile-card">
+                <div class="rounded-3 bg-secondary d-flex align-items-center justify-content-center mb-2 shadow profile-avatar" style="width: 140px; height: 140px; font-size: 3rem;">
+                    <i class="bi bi-person-fill"></i>
+                </div>
+                <span class="fs-5 fw-semibold text-secondary-hover">{{ perfil.nombre }}</span>
+            </a>
+        {% empty %}
+            <!-- Perfil por defecto si recién se registra y no creó perfiles -->
+            <a href="{% url 'catalogo' perfil.id %}" class="text-decoration-none text-center text-white profile-card">
+                <div class="rounded-3 bg-danger d-flex align-items-center justify-content-center mb-2 shadow profile-avatar" style="width: 140px; height: 140px; font-size: 3rem;">
+                    <i class="bi bi-person-fill"></i>
+                </div>
+                <span class="fs-5 fw-semibold">{{ user.username|truncatechars:12 }}</span>
+            </a>
+        {% endfor %}
+
+        <!-- Botón para agregar un nuevo perfil -->
+        <a href="#" class="text-decoration-none text-center text-secondary profile-card" data-bs-toggle="modal" data-bs-target="#modalCrearPerfil">
+            <div class="rounded-3 border border-2 border-secondary d-flex align-items-center justify-content-center mb-2 profile-avatar" style="width: 140px; height: 140px; font-size: 3rem;">
+                <i class="bi bi-plus-lg"></i>
+            </div>
+            <span class="fs-5 fw-semibold">Agregar perfil</span>
+        </a>
+    </div>
+
+    <button class="btn btn-outline-secondary px-4 py-2 border-2 fw-semibold tracking-wider">
+        Administrar perfiles
+    </button>
+</div>
+
+<!-- Modal para Crear Nuevo Perfil -->
+<div class="modal fade" id="modalCrearPerfil" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content bg-dark text-white border-secondary">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title fw-bold">Añadir perfil</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="POST" action="{% url 'crear_perfil' %}">
+                {% csrf_token %}
+                <div class="modal-body py-4">
+                    <p class="text-secondary small mb-3">Añade un perfil para otra persona que mira RedFlix.</p>
+                    <div class="mb-3">
+                        <label class="form-label text-secondary">Nombre del perfil</label>
+                        <input type="text" name="nombre" class="form-control bg-black text-white border-secondary" placeholder="Nombre" required>
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-netflix">Guardar Perfil</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<style>
+    .profile-avatar {
+        transition: transform 0.2s ease, border-color 0.2s ease;
+    }
+    .profile-card:hover .profile-avatar {
+        transform: scale(1.05);
+        border-color: #ffffff !important;
+    }
+</style>
+{% endblock %}
