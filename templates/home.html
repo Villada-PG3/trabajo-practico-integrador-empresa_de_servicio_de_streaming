@@ -49,9 +49,16 @@
         transform: scale(1);
     }
 
+    .featured-banner-play-link {
+        position: absolute;
+        z-index: 1;
+        inset: 0;
+    }
+
     .featured-banner-shade {
         position: absolute;
         inset: 0;
+        pointer-events: none;
         background:
             linear-gradient(90deg, rgba(0, 0, 0, 0.94) 0%, rgba(0, 0, 0, 0.68) 37%, rgba(0, 0, 0, 0.08) 100%),
             linear-gradient(0deg, #141414 0%, transparent 30%, rgba(0, 0, 0, 0.12) 100%);
@@ -273,6 +280,18 @@
         object-position: center center;
     }
 
+    .title-poster-play-link {
+        position: absolute;
+        z-index: 1;
+        inset: 0;
+    }
+
+    .title-poster-play-link:focus-visible,
+    .featured-banner-play-link:focus-visible {
+        outline: 3px solid #fff;
+        outline-offset: -5px;
+    }
+
     .title-card:nth-child(5n + 2) .title-poster {
         background: linear-gradient(145deg, #173b4a, #171717 72%);
     }
@@ -317,6 +336,7 @@
     .title-poster-mark {
         position: relative;
         z-index: 1;
+        pointer-events: none;
     }
 
     .title-poster-mark {
@@ -339,6 +359,7 @@
         font-weight: 900;
         line-height: 1;
         text-shadow: 0 0.25rem 1rem rgba(0, 0, 0, 0.8);
+        pointer-events: none;
     }
 
     .popular-list {
@@ -493,6 +514,9 @@
         {% if banner.imagen_url %}
             <img class="featured-banner-image" src="{{ banner.imagen_url }}" alt="" {% if not forloop.first %}loading="lazy"{% endif %}>
         {% endif %}
+        <a class="featured-banner-play-link"
+           href="{% url 'reproducir_titulo' banner.titulo.pk %}"
+           aria-label="Reproducir {{ banner.titulo.nombre_mostrar }}"></a>
         <div class="featured-banner-shade" aria-hidden="true"></div>
         <div class="featured-banner-content">
             <div class="featured-banner-copy text-white">
@@ -649,6 +673,11 @@
             {% for titulo in carrusel.titulos %}
             <article class="title-card" role="listitem">
                 <div class="title-poster">
+                    {% if user.is_authenticated %}
+                        <a class="title-poster-play-link"
+                           href="{% url 'reproducir_titulo' titulo.pk %}"
+                           aria-label="Reproducir {{ titulo.nombre_mostrar }}"></a>
+                    {% endif %}
                     {% with imagen=titulo.imagenes_catalogo|first %}
                         {% if imagen and imagen.imagen %}
                             <img class="title-poster-image" src="{{ imagen.imagen.url }}" alt="{{ titulo.nombre_mostrar }}" loading="lazy">
@@ -670,6 +699,7 @@
                                 data-title-average="{{ titulo.estrellas_promedio_redondeado|default_if_none:'' }}"
                                 data-title-average-percent="{{ titulo.porcentaje_promedio|default_if_none:'' }}"
                                 data-title-in-list="{{ titulo.en_mi_lista|yesno:'true,false' }}"
+                                data-title-play-url="{% url 'reproducir_titulo' titulo.pk %}"
                                 data-title-toggle-url="{% url 'toggle_mi_lista' titulo.pk %}"
                                 data-title-rating-url="{% url 'calificar_titulo' titulo.pk %}"
                                 aria-label="Ver detalles y calificar: {{ titulo.nombre_mostrar }}"
@@ -698,7 +728,10 @@
                 </div>
                 <div class="pt-2">
                     <h3 class="title-card-name h6 fw-semibold mb-1">
-                        {{ titulo.nombre_mostrar }}
+                        <a class="text-white text-decoration-none"
+                           href="{% url 'reproducir_titulo' titulo.pk %}">
+                            {{ titulo.nombre_mostrar }}
+                        </a>
                         {% include "partials/promedio_estrellas.html" with titulo=titulo %}
                     </h3>
                     <p class="title-card-type small text-white-50 mb-1">
@@ -1001,8 +1034,9 @@
                         : Number(content.seccion) === section
                 ));
                 filteredContents.forEach((content) => {
-                    const item = document.createElement('article');
-                    item.className = 'title-details-content-item';
+                    const item = document.createElement('a');
+                    item.className = 'title-details-content-item text-decoration-none text-white';
+                    item.href = content.reproducir_url;
 
                     if (content.imagen) {
                         const image = document.createElement('img');
@@ -1025,6 +1059,7 @@
                     heading.textContent = content.mostrar_numero_episodio
                         ? `${content.nombre} - Episodio ${content.orden}`
                         : content.nombre;
+                    item.setAttribute('aria-label', `Reproducir ${heading.textContent}`);
                     copy.append(heading);
                     if (content.descripcion) {
                         const description = document.createElement('p');
@@ -1170,6 +1205,13 @@
                 document.body.style.overflow = 'hidden';
                 titleDetails.querySelector('[data-title-details-close]').focus();
         });
+
+        const tituloRegreso = new URLSearchParams(window.location.search).get('titulo');
+        if (tituloRegreso && /^\d+$/.test(tituloRegreso)) {
+            document.querySelector(
+                `[data-title-details-open][data-title-id="${tituloRegreso}"]`,
+            )?.click();
+        }
 
         titleDetails.querySelector('[data-title-details-close]')
             .addEventListener('click', closeDetails);

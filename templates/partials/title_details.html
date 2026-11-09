@@ -11,7 +11,10 @@
             <div class="title-details-image-caption">
                 <h2 class="title-details-name"
                     id="title-details-name">
-                    <span data-title-details-name-text></span>
+                    <a class="text-white text-decoration-none"
+                       data-title-details-name-link href="#">
+                        <span data-title-details-name-text></span>
+                    </a>
                 </h2>
                 <span class="average-rating-inline d-none"
                       data-title-details-average></span>
@@ -19,6 +22,10 @@
         </div>
         <div class="title-details-content">
             <div class="title-details-actions">
+                <a class="btn btn-netflix" data-title-details-play
+                   href="#" hidden>
+                    <i class="bi bi-play-fill me-1" aria-hidden="true"></i>Reproducir
+                </a>
                 <form method="post" class="m-0" data-list-toggle data-title-details-list>
                     {% csrf_token %}
                     <input type="hidden" name="next" value="{{ request.get_full_path }}">

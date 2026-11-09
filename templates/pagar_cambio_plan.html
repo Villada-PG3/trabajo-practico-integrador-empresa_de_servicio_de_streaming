@@ -54,8 +54,17 @@
             <p class="text-white-50"><strong>{{ plan.nombre }}</strong></p>
         {% endif %}
         <dl class="row">
-            <dt class="col-sm-5 text-white-50">Precio del plan seleccionado</dt>
-            <dd class="col-sm-7">${{ precio.precio|floatformat:2 }}</dd>
+            {% if suscripcion_inicial and primer_mes_gratis %}
+                <dt class="col-sm-5 text-white-50">Promoción de bienvenida</dt>
+                <dd class="col-sm-7">
+                    Gratis el primer mes, luego a ${{ precio.precio|floatformat:2 }} por mes
+                </dd>
+                <dt class="col-sm-5 text-white-50">Monto del primer cobro</dt>
+                <dd class="col-sm-7">$0.00</dd>
+            {% else %}
+                <dt class="col-sm-5 text-white-50">Precio del plan seleccionado</dt>
+                <dd class="col-sm-7">${{ precio.precio|floatformat:2 }}</dd>
+            {% endif %}
             <dt class="col-sm-5 text-white-50">
                 {% if suscripcion_inicial %}Inicio del plan{% else %}Próxima fecha de cobro y vigencia{% endif %}
             </dt>

@@ -466,7 +466,7 @@ class Command(BaseCommand):
                 CalidadIdiomaContenido.objects.get_or_create(
                     idioma_contenido=idioma_contenido,
                     calidad=calidad,
-                    defaults={'archivo': b'archivo de video ficticio'},
+                    defaults={'archivo_legacy': b'archivo de video ficticio'},
                 )
             Subtitulo.objects.get_or_create(
                 contenido=contenido,

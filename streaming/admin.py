@@ -66,9 +66,13 @@ class UsuarioAdmin(UserAdmin):
     search_fields = ('username', 'email', 'telefono')
 
 
+@admin.register(CalidadIdiomaContenido)
+class CalidadIdiomaContenidoAdmin(admin.ModelAdmin):
+    exclude = ('archivo_legacy',)
+
+
 admin.site.register([
     Calidad,
-    CalidadIdiomaContenido,
     Calificacion,
     Categoria,
     Cobro,
