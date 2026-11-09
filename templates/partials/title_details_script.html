@@ -3,6 +3,7 @@
     if (titleDetails) {
         const image = titleDetails.querySelector('[data-title-details-image]');
         const name = titleDetails.querySelector('[data-title-details-name-text]');
+        const nameLink = titleDetails.querySelector('[data-title-details-name-link]');
         const average = titleDetails.querySelector('[data-title-details-average]');
         const description = titleDetails.querySelector('[data-title-details-description]');
         const cast = titleDetails.querySelector('[data-title-details-cast]');
@@ -15,6 +16,7 @@
         const ageRow = titleDetails.querySelector('[data-title-details-age-row]');
         const listForm = titleDetails.querySelector('[data-title-details-list]');
         const listButton = titleDetails.querySelector('[data-title-details-list-button]');
+        const playLink = titleDetails.querySelector('[data-title-details-play]');
         const contentsSection = titleDetails.querySelector('[data-title-details-contents]');
         const contentsFilters = titleDetails.querySelector(
             '[data-title-details-content-filters]',
@@ -94,8 +96,9 @@
                         : Number(content.seccion) === section
                 ));
                 filteredContents.forEach((content) => {
-                    const item = document.createElement('article');
-                    item.className = 'title-details-content-item';
+                    const item = document.createElement('a');
+                    item.className = 'title-details-content-item text-decoration-none text-white';
+                    item.href = content.reproducir_url;
 
                     if (content.imagen) {
                         const contentImage = document.createElement('img');
@@ -118,6 +121,7 @@
                     heading.textContent = content.mostrar_numero_episodio
                         ? `${content.nombre} - Episodio ${content.orden}`
                         : content.nombre;
+                    item.setAttribute('aria-label', `Reproducir ${heading.textContent}`);
                     copy.append(heading);
                     if (content.descripcion) {
                         const contentDescription = document.createElement('p');
@@ -175,10 +179,11 @@
                 titleId, titleName, titleDescription, titleCast, titleCategories,
                 titleAge, titleImage,
                 titleRating, titleAverage, titleAveragePercent, titleInList,
-                titleToggleUrl, titleRatingUrl, titleContents,
+                titleToggleUrl, titleRatingUrl, titleContents, titlePlayUrl,
             } = button.dataset;
             renderContents(JSON.parse(titleContents || '[]'));
             name.textContent = titleName;
+            nameLink.href = titlePlayUrl || '#';
             average.classList.toggle('d-none', !titleAverage);
             average.setAttribute('aria-label', `Promedio de ${titleAveragePercent}%`);
             if (titleAverage) {
@@ -195,6 +200,8 @@
             ageRow.hidden = !titleAge;
             image.hidden = !titleImage;
             image.src = titleImage || '';
+            playLink.href = titlePlayUrl || '#';
+            playLink.hidden = !titlePlayUrl;
             listForm.action = titleToggleUrl;
             listForm.dataset.titleId = titleId;
             listForm.dataset.titleName = titleName;

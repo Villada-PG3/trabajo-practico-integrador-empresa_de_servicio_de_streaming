@@ -28,7 +28,13 @@
                                 <span class="form-check-label fw-bold fs-4">{{ item.plan.nombre }}</span>
                             </div>
                             <p class="text-secondary">{{ item.plan.descripcion|default:"Plan de streaming" }}</p>
-                            <p class="fs-3 fw-bold">${{ item.precio.precio }}</p>
+                            {% if item.primer_mes_gratis %}
+                                <p class="fs-5 fw-bold text-success">
+                                    Gratis el primer mes, luego a ${{ item.precio.precio|floatformat:2 }} por mes
+                                </p>
+                            {% else %}
+                                <p class="fs-3 fw-bold">${{ item.precio.precio|floatformat:2 }}</p>
+                            {% endif %}
                             <p class="small text-secondary mb-0">
                                 Hasta {{ item.plan.cantidad_pantallas_simultaneas }} pantallas simultáneas
                             </p>

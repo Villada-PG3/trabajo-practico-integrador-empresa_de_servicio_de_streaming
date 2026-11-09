@@ -1,6 +1,10 @@
 import json
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+import unicodedata
+from datetime import date, timedelta
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+
 from django.contrib import messages
 from django.contrib.auth import SESSION_KEY as AUTH_SESSION_KEY
 from django.contrib.auth import (authenticate, get_user_model, login, logout,
@@ -16,6 +20,27 @@ from django.db.models import (Avg, Case, CharField, Count, ExpressionWrapper,
 from django.db.models.functions import Coalesce, NullIf, Trim
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.db.models import (
+    Case,
+    CharField,
+    Count,
+    Avg,
+    ExpressionWrapper,
+    F,
+    FloatField,
+    IntegerField,
+    Max,
+    OuterRef,
+    Prefetch,
+    Q,
+    Subquery,
+    Value,
+    When,
+)
+from django.db.models.functions import Coalesce, Concat, NullIf, Trim
+from django.http import Http404, HttpResponse, JsonResponse
+from django.contrib.sessions.models import Session
+from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
@@ -29,7 +54,7 @@ from .forms import (CuentaPreferenciasForm, EditarCuentaForm, LoginForm,
                     TarjetaDemoPlanForm)
 from .middleware import CLAVE_ADMISION_DISPOSITIVO_PENDIENTE
 from .models import *
-from .models import Contenido, Perfil, PerfilContenido, Subtitulo
+
 
 LIMITE_TITULOS_CARRUSEL = 30
 LIMITE_PERFILES = 5
@@ -268,6 +293,10 @@ def asignar_contenidos_detalle(titulos, idioma_id=None):
                 'duracion': duracion,
                 'imagen': imagen.imagen.url if imagen else '',
                 'mostrar_numero_episodio': mostrar_numero_episodio,
+                'reproducir_url': reverse(
+                    'reproducir_contenido',
+                    args=[titulo.pk, contenido.pk],
+                ),
             })
         titulo.contenidos_detalle_json = json.dumps(
             titulo.contenidos_detalle,
@@ -765,6 +794,7 @@ def buscar_titulos_view(request):
     if len(consulta) < 2:
         return JsonResponse({'resultados': []})
 
+    tipo_busqueda = request.GET.get('tipo', 'titulos')
     perfil_activo = get_active_profile(request)
     if perfil_activo is None:
         return JsonResponse(
@@ -797,7 +827,6 @@ def buscar_titulos_view(request):
         )
         .annotate(nombre_busqueda=nombre_titulo)
         .annotate(imagen_busqueda=Subquery(imagenes.values('imagen')[:1]))
-        .filter(nombre_busqueda__icontains=consulta)
         .select_related('tipo_titulo')
         .distinct()
         .order_by('nombre_busqueda', 'pk')
@@ -815,6 +844,34 @@ def buscar_titulos_view(request):
             prefetch_contenidos_detalle(),
         )
     )
+    if tipo_busqueda == 'elenco':
+        elenco_coincidente = TituloRolElenco.objects.annotate(
+            nombre_completo=Concat(
+                'rol_elenco__elenco__nombre',
+                Value(' '),
+                'rol_elenco__elenco__apellido',
+                output_field=CharField(),
+            ),
+        ).filter(nombre_completo__icontains=consulta).select_related(
+            'rol_elenco__elenco',
+        )
+        titulos = titulos.annotate(
+            elenco_busqueda=Concat(
+                'titulo_rol_elencos__rol_elenco__elenco__nombre',
+                Value(' '),
+                'titulo_rol_elencos__rol_elenco__elenco__apellido',
+                output_field=CharField(),
+            ),
+        ).filter(elenco_busqueda__icontains=consulta).prefetch_related(
+            Prefetch(
+                'titulo_rol_elencos',
+                queryset=elenco_coincidente,
+                to_attr='relaciones_elenco_coincidente',
+            ),
+        )
+    else:
+        titulos = titulos.filter(nombre_busqueda__icontains=consulta)
+
     titulos_guardados = set(
         Porver.objects.filter(
             perfil_titulo__perfil=perfil_activo,
@@ -840,6 +897,10 @@ def buscar_titulos_view(request):
                 'imagen': default_storage.url(titulo.imagen_busqueda)
                 if titulo.imagen_busqueda else '',
                 'url': f"{reverse('home')}?titulo={titulo.pk}",
+                'reproducir_url': reverse(
+                    'reproducir_titulo',
+                    args=[titulo.pk],
+                ),
                 'toggle_url': reverse('toggle_mi_lista', args=[titulo.pk]),
                 'rating_url': reverse('calificar_titulo', args=[titulo.pk]),
                 'en_mi_lista': titulo.pk in titulos_guardados,
@@ -851,6 +912,14 @@ def buscar_titulos_view(request):
                 'puntuacion_perfil': str(puntuaciones_perfil.get(titulo.pk) or ''),
                 'descripcion': titulo.descripcion_mostrar or '',
                 'elenco': titulo.elenco_detalle,
+                'elencos_coincidentes': list(dict.fromkeys(
+                    f'{relacion.rol_elenco.elenco.nombre} {relacion.rol_elenco.elenco.apellido}'
+                    for relacion in getattr(
+                        titulo,
+                        'relaciones_elenco_coincidente',
+                        [],
+                    )
+                )) if tipo_busqueda == 'elenco' else [],
                 'categorias': titulo.categorias_detalle,
                 'edad': titulo.clasificacion_edad,
                 'contenidos': titulo.contenidos_detalle,
@@ -858,6 +927,280 @@ def buscar_titulos_view(request):
             for titulo in resultados_busqueda
         ],
     })
+
+
+@login_required
+@never_cache
+def reproducir_titulo_view(request, titulo_id, contenido_id=None):
+    perfil_activo = get_active_profile(request)
+    if perfil_activo is None:
+        return redirect('perfiles')
+
+    titulo = Titulo.objects.filter(
+        pk=titulo_id,
+        edad_minima__lte=perfil_activo.tipo_perfil.edad_max,
+    ).select_related('tipo_titulo').first()
+    if titulo is None:
+        raise Http404('No se encontró un título disponible para este perfil.')
+
+    contenidos = Contenido.objects.filter(titulo=titulo)
+    if contenido_id is not None:
+        contenido = contenidos.filter(pk=contenido_id).first()
+    else:
+        contenido = contenidos.order_by('seccion', 'orden', 'pk').first()
+    if contenido is None:
+        raise Http404('El título no tiene contenido disponible.')
+
+    suscripcion = obtener_suscripcion_activa(request.user)
+    if suscripcion is None:
+        messages.info(request, 'Necesitas una suscripción activa para reproducir contenido.')
+        return redirect('seleccionar_plan')
+
+    calidades_permitidas = PlanCalidad.objects.filter(
+        plan=suscripcion.plan,
+    ).values('calidad_id')
+    videos = CalidadIdiomaContenido.objects.filter(
+        idioma_contenido__contenido=contenido,
+        archivo__gt='',
+        calidad_id__in=calidades_permitidas,
+    ).select_related(
+        'idioma_contenido__idioma',
+        'calidad',
+    )
+    opciones_reproduccion = []
+    opciones_vistas = set()
+    for opcion in videos.order_by(
+        'calidad__nombre',
+        'idioma_contenido__idioma__nombre',
+        'pk',
+    ):
+        if not opcion.archivo.storage.exists(opcion.archivo.name):
+            continue
+        clave = (
+            opcion.idioma_contenido.idioma_id,
+            opcion.calidad_id,
+        )
+        if clave in opciones_vistas:
+            continue
+        opciones_vistas.add(clave)
+        opciones_reproduccion.append(opcion)
+
+    idiomas = {}
+    for opcion in opciones_reproduccion:
+        idioma = opcion.idioma_contenido.idioma
+        idiomas[idioma.pk] = idioma
+
+    idioma_seleccionado = str(request.user.idioma_id or '')
+    if idioma_seleccionado not in {str(pk) for pk in idiomas} and idiomas:
+        idioma_seleccionado = str(next(iter(idiomas)))
+    video_seleccionado = ''
+    if idioma_seleccionado:
+        calidad_inicial = next(
+            opcion for opcion in opciones_reproduccion
+            if opcion.idioma_contenido.idioma_id == int(idioma_seleccionado)
+        )
+        video_seleccionado = str(calidad_inicial.pk)
+
+    if request.method == 'POST':
+        idioma_seleccionado = request.POST.get('idioma', '')
+        video_seleccionado = request.POST.get('video', '')
+        opcion = next(
+            (
+                opcion for opcion in opciones_reproduccion
+                if str(opcion.idioma_contenido.idioma_id) == idioma_seleccionado
+                and str(opcion.pk) == video_seleccionado
+            ),
+            None,
+        )
+        if opcion is None:
+            messages.error(
+                request,
+                'Selecciona un idioma y una calidad disponibles para tu plan.',
+            )
+        else:
+            return redirect(
+                'reproducir_video',
+                titulo_id=titulo.pk,
+                video_id=opcion.pk,
+            )
+
+    return render(request, 'reproducir_titulo.html', {
+        'titulo': titulo,
+        'contenido': contenido,
+        'suscripcion': suscripcion,
+        'opciones_reproduccion': opciones_reproduccion,
+        'idiomas': idiomas.values(),
+        'idioma_seleccionado': idioma_seleccionado,
+        'video_seleccionado': video_seleccionado,
+    })
+
+
+@login_required
+@never_cache
+def reproducir_video_view(request, titulo_id, video_id):
+    perfil_activo = get_active_profile(request)
+    if perfil_activo is None:
+        return redirect('perfiles')
+
+    titulo = Titulo.objects.filter(
+        pk=titulo_id,
+        edad_minima__lte=perfil_activo.tipo_perfil.edad_max,
+    ).first()
+    if titulo is None:
+        raise Http404('No se encontró un título disponible para este perfil.')
+    video = CalidadIdiomaContenido.objects.filter(
+        pk=video_id,
+        idioma_contenido__contenido__titulo=titulo,
+    ).select_related(
+        'idioma_contenido__contenido',
+        'idioma_contenido__idioma',
+        'calidad',
+    ).first()
+    if video is None or not video.archivo:
+        raise Http404('No se encontró el video solicitado.')
+    contenido = video.idioma_contenido.contenido
+
+    suscripcion = obtener_suscripcion_activa(request.user)
+    if suscripcion is None:
+        messages.info(request, 'Necesitas una suscripción activa para reproducir contenido.')
+        return redirect('seleccionar_plan')
+    if not PlanCalidad.objects.filter(
+        plan=suscripcion.plan,
+        calidad=video.calidad,
+    ).exists():
+        raise Http404('La calidad seleccionada no está disponible en tu plan.')
+    if not video.archivo.storage.exists(video.archivo.name):
+        raise Http404('El archivo de video no está disponible.')
+
+    subtitulos = obtener_subtitulos_reproduccion(titulo, contenido)
+    for subtitulo in subtitulos:
+        idioma_normalizado = unicodedata.normalize(
+            'NFKD',
+            subtitulo.idioma.nombre,
+        ).encode('ascii', 'ignore').decode('ascii').casefold()
+        subtitulo.codigo_idioma = (
+            'en' if idioma_normalizado.startswith('ingles')
+            or idioma_normalizado.startswith('english')
+            else 'es' if idioma_normalizado.startswith('espanol')
+            or idioma_normalizado.startswith('spanish')
+            else idioma_normalizado[:2]
+        )
+        subtitulo.url = reverse(
+            'servir_subtitulo',
+            args=[titulo.pk, video.pk, subtitulo.pk],
+        )
+
+    return render(request, 'reproducir_video.html', {
+        'video': video,
+        'titulo': titulo,
+        'contenido': contenido,
+        'subtitulos': subtitulos,
+        'pagina_reproduccion': True,
+    })
+
+
+def obtener_subtitulos_reproduccion(titulo, contenido):
+    idiomas_objetivo = (
+        ('Español', ('espanol', 'spanish'), 'espanol'),
+        ('Inglés', ('ingles', 'english'), 'ingles'),
+    )
+    idiomas = list(Idioma.objects.all().order_by('nombre', 'pk'))
+    subtitulos = []
+
+    for nombre, aliases, archivo_slug in idiomas_objetivo:
+        idioma = next(
+            (
+                idioma for idioma in idiomas
+                if unicodedata.normalize(
+                    'NFKD',
+                    idioma.nombre,
+                ).encode('ascii', 'ignore').decode('ascii').casefold()
+                in aliases
+            ),
+            None,
+        )
+        if idioma is None:
+            idioma = Idioma.objects.create(nombre=nombre)
+            idiomas.append(idioma)
+
+        subtitulo = Subtitulo.objects.filter(
+            contenido=contenido,
+            idioma=idioma,
+        ).first()
+        if subtitulo is None:
+            ruta_subtitulo = (
+                f'subtitulo/titulo{titulo.pk}/contenido{contenido.pk}/'
+                f'{archivo_slug}.vtt'
+            )
+            if default_storage.exists(ruta_subtitulo):
+                with default_storage.open(ruta_subtitulo, 'rb') as archivo:
+                    archivo_vtt = archivo.read()
+            elif archivo_slug == 'ingles':
+                archivo_vtt = (
+                    b'WEBVTT\n\n00:00:01.000 --> 00:00:04.000\n'
+                    b'Demo subtitle in English.\n'
+                )
+            else:
+                archivo_vtt = (
+                    b'WEBVTT\n\n00:00:01.000 --> 00:00:04.000\n'
+                    b'Subtitulo de demostracion en espanol.\n'
+                )
+            subtitulo = Subtitulo.objects.create(
+                contenido=contenido,
+                idioma=idioma,
+                archivo_vtt=archivo_vtt,
+            )
+        subtitulos.append(subtitulo)
+
+    return subtitulos
+
+
+@login_required
+@never_cache
+def servir_subtitulo_view(request, titulo_id, video_id, subtitulo_id):
+    perfil_activo = get_active_profile(request)
+    if perfil_activo is None:
+        return redirect('perfiles')
+
+    titulo = Titulo.objects.filter(
+        pk=titulo_id,
+        edad_minima__lte=perfil_activo.tipo_perfil.edad_max,
+    ).first()
+    if titulo is None:
+        raise Http404('No se encontró un título disponible para este perfil.')
+
+    video = CalidadIdiomaContenido.objects.filter(
+        pk=video_id,
+        idioma_contenido__contenido__titulo=titulo,
+        archivo__gt='',
+    ).select_related('calidad').first()
+    if video is None:
+        raise Http404('No se encontró el video solicitado.')
+    contenido = video.idioma_contenido.contenido
+
+    suscripcion = obtener_suscripcion_activa(request.user)
+    if suscripcion is None:
+        messages.info(request, 'Necesitas una suscripción activa para reproducir contenido.')
+        return redirect('seleccionar_plan')
+    if not PlanCalidad.objects.filter(
+        plan=suscripcion.plan,
+        calidad=video.calidad,
+    ).exists():
+        raise Http404('La calidad seleccionada no está disponible en tu plan.')
+
+    subtitulo = Subtitulo.objects.filter(
+        pk=subtitulo_id,
+        contenido=contenido,
+    ).first()
+    if subtitulo is None:
+        raise Http404('No se encontró el subtítulo solicitado.')
+
+    response = HttpResponse(
+        bytes(subtitulo.archivo_vtt),
+        content_type='text/vtt; charset=utf-8',
+    )
+    response['X-Content-Type-Options'] = 'nosniff'
+    return response
 
 
 @login_required
@@ -1165,7 +1508,7 @@ def registro_view(request):
 def cuenta_view(request):
     registrar_sesion_usuario(request, request.user)
     seccion = request.GET.get('seccion', 'usuario')
-    if seccion not in {'usuario', 'suscripcion', 'mas-info'}:
+    if seccion not in {'usuario', 'suscripcion', 'cobros', 'mas-info'}:
         seccion = 'usuario'
 
     form = CuentaPreferenciasForm(
@@ -1215,6 +1558,25 @@ def cuenta_view(request):
             .first()
         )
 
+    cobros = list(
+        Cobro.objects.filter(suscripcion__usuario=request.user)
+        .select_related(
+            'suscripcion__plan',
+            'cambio_plan__plan',
+            'tarjeta',
+        )
+        .order_by('-fecha_cobro', '-pk')
+    )
+    for cobro in cobros:
+        cobro.plan_facturado = (
+            cobro.cambio_plan.plan
+            if cobro.cambio_plan_id
+            else cobro.suscripcion.plan
+        )
+        cobro.periodo_inicio = cobro.fecha_cobro
+        proximo_cobro = calcular_proximo_cobro(cobro.fecha_cobro)
+        cobro.periodo_fin = proximo_cobro - timedelta(days=1)
+
     return render(request, 'cuenta.html', {
         'form': form,
         'seccion_cuenta': seccion,
@@ -1231,6 +1593,7 @@ def cuenta_view(request):
         ),
         'precio_actual': precio_actual,
         'ultimo_cobro': ultimo_cobro,
+        'cobros': cobros,
         'calidades': (
             suscripcion.plan.plan_calidades.select_related('calidad').order_by(
                 'calidad__nombre',
@@ -1256,6 +1619,54 @@ def cerrar_otras_sesiones_view(request):
         'Se cerraron las demás sesiones. Esta sesión permanece abierta.',
     )
     return redirect(f'{reverse("cuenta")}?seccion=usuario')
+
+
+@login_required(login_url='login')
+@require_POST
+def cancelar_suscripcion_view(request):
+    hoy = timezone.localdate()
+    with transaction.atomic():
+        suscripciones = list(
+            Suscripcion.objects.select_for_update()
+            .filter(usuario=request.user, habilitado=True)
+            .order_by('-fecha_inscripcion', '-pk')
+        )
+        suscripcion = next(
+            (
+                item for item in suscripciones
+                if suscripcion_activa(item, hoy)
+                and item.fecha_cancelacion is None
+            ),
+            None,
+        )
+        if suscripcion is None:
+            if any(item.fecha_cancelacion is not None for item in suscripciones):
+                messages.info(request, 'La cancelación de tu suscripción ya está programada.')
+            else:
+                messages.error(request, 'No tienes una suscripción activa para cancelar.')
+            return redirect(f'{reverse("cuenta")}?seccion=suscripcion')
+
+        fecha_cancelacion = calcular_proximo_cobro(suscripcion.fecha_vigencia)
+        if fecha_cancelacion is None:
+            messages.error(
+                request,
+                'No se puede programar la cancelación porque la suscripción no tiene fecha de vigencia.',
+            )
+            return redirect(f'{reverse("cuenta")}?seccion=suscripcion')
+
+        suscripcion.fecha_cancelacion = fecha_cancelacion
+        suscripcion.save(update_fields=['fecha_cancelacion'])
+        suscripcion.cambios_programados.filter(
+            estado=CambioPlan.ESTADO_PENDIENTE,
+        ).update(estado=CambioPlan.ESTADO_CANCELADO)
+
+    messages.success(
+        request,
+        'La suscripción seguirá activa hasta el '
+        f'{fecha_cancelacion:%d/%m/%Y} y se cancelará en esa fecha. '
+        'No se realizará un nuevo cobro.',
+    )
+    return redirect(f'{reverse("cuenta")}?seccion=suscripcion')
 
 
 @login_required(login_url='login')
@@ -1384,6 +1795,14 @@ def obtener_suscripcion_activa(usuario):
     )
 
 
+def es_plan_basico(plan):
+    nombre_normalizado = unicodedata.normalize(
+        'NFKD',
+        plan.nombre,
+    ).encode('ascii', 'ignore').decode('ascii').casefold()
+    return 'basico' in nombre_normalizado.split()
+
+
 @login_required
 def desactivar_perfil_view(request, perfil_id):
     perfil = Perfil.objects.filter(
@@ -1428,6 +1847,9 @@ def seleccionar_plan_view(request):
     )
 
     cambiar_plan = request.GET.get('cambiar') == '1'
+    primera_suscripcion = not Suscripcion.objects.filter(
+        usuario=request.user,
+    ).exists()
     suscripcion_actual = obtener_suscripcion_activa(request.user)
     if suscripcion_actual and not cambiar_plan:
         messages.info(request, 'Tu cuenta ya tiene una suscripción activa.')
@@ -1466,7 +1888,15 @@ def seleccionar_plan_view(request):
             .first()
         )
         if precio_actual:
-            planes_con_precio.append({'plan': plan, 'precio': precio_actual})
+            planes_con_precio.append({
+                'plan': plan,
+                'precio': precio_actual,
+                'primer_mes_gratis': (
+                    primera_suscripcion
+                    and not cambiar_plan
+                    and es_plan_basico(plan)
+                ),
+            })
 
     fecha_aplicacion = hoy
     if suscripcion_actual:
@@ -1498,12 +1928,20 @@ def pagar_suscripcion_view(request, plan_id):
         messages.error(request, 'El plan seleccionado ya no está disponible.')
         return redirect('seleccionar_plan')
 
+    primer_mes_gratis = (
+        es_plan_basico(precio.plan)
+        and not Suscripcion.objects.filter(usuario=request.user).exists()
+    )
     form = TarjetaDemoPlanForm(request.POST or None)
     if request.method == 'POST' and form.is_valid():
         with transaction.atomic():
             if obtener_suscripcion_activa(request.user) is not None:
                 messages.info(request, 'Tu cuenta ya tiene una suscripción activa.')
                 return redirect('home')
+            primer_mes_gratis = (
+                es_plan_basico(precio.plan)
+                and not Suscripcion.objects.filter(usuario=request.user).exists()
+            )
             fecha_inicio = fecha_inicio_suscripcion(request.user, hoy)
             tarjeta = guardar_tarjeta_demo(
                 form.cleaned_data['nombre_titular'],
@@ -1532,7 +1970,7 @@ def pagar_suscripcion_view(request, plan_id):
                 fecha_cobro=fecha_inicio,
                 estado_cobro=por_aprobar,
                 tarjeta=tarjeta,
-                monto=precio.precio,
+                monto=0 if primer_mes_gratis else precio.precio,
             )
         messages.success(
             request,
@@ -1545,6 +1983,7 @@ def pagar_suscripcion_view(request, plan_id):
         'form': form,
         'plan': precio.plan,
         'precio': precio,
+        'primer_mes_gratis': primer_mes_gratis,
         'fecha_aplicacion': fecha_inicio_suscripcion(request.user, hoy),
         'suscripcion_inicial': True,
     })

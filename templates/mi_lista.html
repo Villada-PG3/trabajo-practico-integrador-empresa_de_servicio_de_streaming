@@ -119,6 +119,7 @@
                                 data-title-average="{{ titulo.estrellas_promedio_redondeado|default_if_none:'' }}"
                                 data-title-average-percent="{{ titulo.porcentaje_promedio|default_if_none:'' }}"
                                 data-title-in-list="true"
+                                data-title-play-url="{% url 'reproducir_titulo' titulo.pk %}"
                                 data-title-toggle-url="{% url 'toggle_mi_lista' titulo.pk %}"
                                 data-title-rating-url="{% url 'calificar_titulo' titulo.pk %}"
                                 aria-label="Ver detalles y calificar: {{ titulo.nombre_mostrar }}"
@@ -139,7 +140,10 @@
                     </form>
                     <div class="pt-2">
                         <h2 class="h6 fw-semibold mb-1">
-                            {{ titulo.nombre_mostrar }}
+                            <a class="text-white text-decoration-none"
+                               href="{% url 'reproducir_titulo' titulo.pk %}">
+                                {{ titulo.nombre_mostrar }}
+                            </a>
                             {% include "partials/promedio_estrellas.html" with titulo=titulo %}
                         </h2>
                         <p class="small text-white-50 mb-1">{{ titulo.tipo_titulo.nombre }}</p>
