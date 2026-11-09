@@ -13,6 +13,7 @@ from django.contrib.auth import (
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import SESSION_KEY as AUTH_SESSION_KEY
 from django.core.files.storage import default_storage
+from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import (
     Case,
@@ -32,7 +33,7 @@ from django.db.models import (
     When,
 )
 from django.db.models.functions import Coalesce, NullIf, Trim
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.contrib.sessions.models import Session
 from django.shortcuts import redirect, render
 from django.urls import reverse
@@ -56,6 +57,7 @@ from .billing import (
     guardar_tarjeta_demo,
     suscripcion_activa,
 )
+from .middleware import CLAVE_ADMISION_DISPOSITIVO_PENDIENTE
 from .models import (
     Categoria,
     Calificacion,
@@ -81,7 +83,7 @@ LIMITE_PERFILES = 5
 SESION_PERFIL_ACTIVO = 'perfil_activo_id'
 
 
-def registrar_sesion_usuario(request, usuario):
+def registrar_sesion_usuario(request, usuario, estado=True):
     session_key = request.session.session_key
     if not session_key:
         request.session.save()
@@ -101,7 +103,7 @@ def registrar_sesion_usuario(request, usuario):
             os=request.META.get('HTTP_USER_AGENT', 'Navegador')[:100],
             ultima_conexion_fecha=ahora.date(),
             ultima_conexion_hora=ahora.time(),
-            estado=True,
+            estado=estado,
             usuario=usuario,
         )
         return
@@ -109,7 +111,7 @@ def registrar_sesion_usuario(request, usuario):
     registro.os = request.META.get('HTTP_USER_AGENT', 'Navegador')[:100]
     registro.ultima_conexion_fecha = ahora.date()
     registro.ultima_conexion_hora = ahora.time()
-    registro.estado = True
+    registro.estado = estado
     registro.save(update_fields=[
         'os',
         'ultima_conexion_fecha',
@@ -1152,9 +1154,10 @@ def login_view(request):
         )
         if user is not None:
             login(request, user)
+            request.session[CLAVE_ADMISION_DISPOSITIVO_PENDIENTE] = True
+            registrar_sesion_usuario(request, user, estado=False)
             if not form.data.get('remember_me'):
                 request.session.set_expiry(0)
-            registrar_sesion_usuario(request, user)
             if Perfil.objects.filter(usuario=user, activo=True).exists():
                 return redirect('perfiles')
             return redirect('crear_perfil')
@@ -1175,6 +1178,19 @@ def logout_view(request):
     return redirect('home')
 
 
+@login_required(login_url='login')
+def dispositivos_bloqueados_view(request):
+    return render(request, 'dispositivos_bloqueados.html', {
+        'pagina_bloqueo_dispositivos': True,
+    })
+
+
+@login_required(login_url='login')
+@require_POST
+def heartbeat_dispositivo_view(request):
+    return HttpResponse(status=204)
+
+
 def registro_view(request):
     if request.user.is_authenticated:
         return redirect('perfiles')
@@ -1185,7 +1201,8 @@ def registro_view(request):
         with transaction.atomic():
             user = form.save()
         login(request, user)
-        registrar_sesion_usuario(request, user)
+        request.session[CLAVE_ADMISION_DISPOSITIVO_PENDIENTE] = True
+        registrar_sesion_usuario(request, user, estado=False)
         return redirect('seleccionar_plan')
     return render(request, 'registro.html', {'form': form})
 
@@ -1664,7 +1681,11 @@ def pagar_cambio_plan_view(request, plan_id):
     })
 
 
+@login_required(login_url='login')
 def reporte_ventas_view(request):
+    if not request.user.is_staff:
+        raise PermissionDenied
+
     form = ReporteVentasFiltroForm(request.GET or None)
     fecha_inicio = None
     fecha_fin = None

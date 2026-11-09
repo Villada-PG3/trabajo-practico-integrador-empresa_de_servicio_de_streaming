@@ -18,6 +18,16 @@ urlpatterns = [
     path('perfiles/<int:perfil_id>/desactivar/', views.desactivar_perfil_view, name='desactivar_perfil'),
     path('login/', views.login_view, name='login'),
     path('logout/', views.logout_view, name='logout'),
+    path(
+        'dispositivos-bloqueados/',
+        views.dispositivos_bloqueados_view,
+        name='dispositivos_bloqueados',
+    ),
+    path(
+        'dispositivos/actividad/',
+        views.heartbeat_dispositivo_view,
+        name='heartbeat_dispositivo',
+    ),
     path('reporte-ventas/', views.reporte_ventas_view, name='reporte_ventas'),
     path('registro/', views.registro_view, name='registro'),
     path('planes/', views.seleccionar_plan_view, name='seleccionar_plan'),

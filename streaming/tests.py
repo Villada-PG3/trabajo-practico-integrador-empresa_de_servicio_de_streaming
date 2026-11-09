@@ -110,7 +110,7 @@ class FlujoCuentaTests(TestCase):
     def test_ruta_raiz_para_visitantes_lleva_a_inicio(self):
         response = self.client.get('/')
 
-        self.assertRedirects(response, reverse('crear_perfil'))
+        self.assertRedirects(response, reverse('home'))
         self.assertEqual(reverse('home'), '/inicio/')
 
     def test_ruta_raiz_con_sesion_lleva_a_perfiles(self):
@@ -334,6 +334,161 @@ class CuentaTests(TestCase):
             idioma=self.idioma,
         )
         self.client.force_login(self.usuario)
+
+    def crear_suscripcion_con_limite(self, limite):
+        plan = Plan.objects.create(
+            nombre=f'Plan de {limite} dispositivos',
+            cantidad_pantallas_simultaneas=limite,
+        )
+        return Suscripcion.objects.create(
+            usuario=self.usuario,
+            plan=plan,
+            fecha_inscripcion=timezone.localdate(),
+            fecha_vigencia=timezone.localdate(),
+        )
+
+    def test_bloquea_el_dispositivo_siguiente_al_limite_del_plan(self):
+        self.crear_suscripcion_con_limite(2)
+        self.assertEqual(self.client.get(reverse('cuenta')).status_code, 200)
+
+        segundo_dispositivo = Client()
+        segundo_dispositivo.force_login(self.usuario)
+        self.assertEqual(
+            segundo_dispositivo.get(reverse('cuenta')).status_code,
+            200,
+        )
+
+        tercer_dispositivo = Client()
+        tercer_dispositivo.force_login(self.usuario)
+        respuesta_bloqueo = tercer_dispositivo.get(reverse('cuenta'))
+        self.assertRedirects(
+            respuesta_bloqueo,
+            reverse('dispositivos_bloqueados'),
+            fetch_redirect_response=False,
+        )
+        pagina_bloqueo = tercer_dispositivo.get(
+            reverse('dispositivos_bloqueados'),
+        )
+        self.assertEqual(pagina_bloqueo.status_code, 200)
+        self.assertContains(pagina_bloqueo, 'El cupo de dispositivos está lleno')
+        self.assertFalse(Registro.objects.filter(
+            usuario=self.usuario,
+            token_disp=tercer_dispositivo.session.session_key,
+        ).exists())
+
+        ultima_actividad = timezone.localtime() - timedelta(minutes=2)
+        Registro.objects.filter(usuario=self.usuario).update(
+            ultima_conexion_fecha=ultima_actividad.date(),
+            ultima_conexion_hora=ultima_actividad.time().replace(tzinfo=None),
+        )
+        respuesta_reintento = tercer_dispositivo.get(reverse('cuenta'))
+        self.assertEqual(respuesta_reintento.status_code, 200)
+        self.assertTrue(Registro.objects.filter(
+            usuario=self.usuario,
+            token_disp=tercer_dispositivo.session.session_key,
+            estado=True,
+        ).exists())
+
+    def test_login_con_cupo_lleno_deja_el_dispositivo_nuevo_en_bloqueo(self):
+        self.crear_suscripcion_con_limite(1)
+        self.assertEqual(self.client.get(reverse('cuenta')).status_code, 200)
+        perfil = Perfil.objects.create(
+            nombre='Perfil principal',
+            imagen=Imagen.objects.first(),
+            tipo_perfil=TipoPerfil.objects.create(
+                nombre='Perfil dispositivo lleno',
+                edad_max=100,
+            ),
+            usuario=self.usuario,
+        )
+
+        nuevo_dispositivo = Client()
+        respuesta_login = nuevo_dispositivo.post(reverse('login'), {
+            'email': self.usuario.email,
+            'password': 'Clave-Segura-2026!',
+        })
+        self.assertRedirects(
+            respuesta_login,
+            reverse('perfiles'),
+            fetch_redirect_response=False,
+        )
+        registro_nuevo = Registro.objects.get(
+            usuario=self.usuario,
+            token_disp=nuevo_dispositivo.session.session_key,
+        )
+        self.assertFalse(registro_nuevo.estado)
+
+        respuesta = nuevo_dispositivo.get(reverse('perfiles'))
+        self.assertRedirects(
+            respuesta,
+            reverse('dispositivos_bloqueados'),
+            fetch_redirect_response=False,
+        )
+        pagina_bloqueo = nuevo_dispositivo.get(reverse('dispositivos_bloqueados'))
+        self.assertEqual(pagina_bloqueo.status_code, 200)
+        self.assertContains(
+            pagina_bloqueo,
+            f'class="navbar-brand-logo me-4" href="{reverse("perfiles")}"',
+        )
+        navbar = str(pagina_bloqueo.content).split('<nav', 1)[1].split('</nav>', 1)[0]
+        self.assertNotIn('id="navbarContent"', navbar)
+        self.assertNotIn(reverse('cuenta'), navbar)
+        self.assertNotIn('>Inicio</a>', navbar)
+        self.assertNotIn('data-title-search-open', navbar)
+        self.assertContains(
+            pagina_bloqueo,
+            f'class="btn btn-netflix" href="{reverse("perfiles")}">Intentar nuevamente</a>',
+        )
+
+        ultima_actividad = timezone.localtime() - timedelta(minutes=2)
+        Registro.objects.filter(
+            usuario=self.usuario,
+            token_disp=self.client.session.session_key,
+        ).update(
+            ultima_conexion_fecha=ultima_actividad.date(),
+            ultima_conexion_hora=ultima_actividad.time().replace(tzinfo=None),
+        )
+        respuesta_reintento = nuevo_dispositivo.get(reverse('perfiles'))
+        self.assertEqual(respuesta_reintento.status_code, 200)
+        self.assertContains(respuesta_reintento, '¿Quién está viendo?')
+
+        ultima_actividad = timezone.localtime() - timedelta(minutes=2)
+        Registro.objects.filter(usuario=self.usuario).update(
+            ultima_conexion_fecha=ultima_actividad.date(),
+            ultima_conexion_hora=ultima_actividad.time().replace(tzinfo=None),
+        )
+        respuesta_reintento = nuevo_dispositivo.get(reverse('perfiles'))
+        self.assertEqual(respuesta_reintento.status_code, 200)
+        self.assertContains(respuesta_reintento, '¿Quién está viendo?')
+        self.assertContains(respuesta_reintento, perfil.nombre)
+        registro_nuevo.refresh_from_db()
+        self.assertTrue(registro_nuevo.estado)
+
+    def test_heartbeat_actualiza_ultima_conexion_del_dispositivo(self):
+        self.crear_suscripcion_con_limite(1)
+        self.assertEqual(self.client.get(reverse('cuenta')).status_code, 200)
+        registro = Registro.objects.get(
+            usuario=self.usuario,
+            token_disp=self.client.session.session_key,
+        )
+        marca_anterior = (
+            registro.ultima_conexion_fecha,
+            registro.ultima_conexion_hora,
+        )
+
+        respuesta = self.client.post(reverse('heartbeat_dispositivo'))
+
+        self.assertEqual(respuesta.status_code, 204)
+        registro.refresh_from_db()
+        marca_actual = (
+            registro.ultima_conexion_fecha,
+            registro.ultima_conexion_hora,
+        )
+        self.assertGreaterEqual(marca_actual, marca_anterior)
+        self.assertContains(
+            self.client.get(reverse('cuenta')),
+            reverse('heartbeat_dispositivo'),
+        )
 
     def test_pagina_cuenta_requiere_autenticacion_y_muestra_campos(self):
         self.client.logout()
@@ -1106,6 +1261,7 @@ class ReporteVentasTests(TestCase):
             password='UnaClave-larga-2026!',
             pais=pais,
             idioma=idioma,
+            is_staff=True,
         )
         plan = Plan.objects.create(nombre='Básico', cantidad_pantallas_simultaneas=1)
         Suscripcion.objects.create(
@@ -1118,6 +1274,7 @@ class ReporteVentasTests(TestCase):
             precio=9.99,
             fecha_inicio=timezone.localdate(),
         )
+        self.client.force_login(usuario)
 
         response = self.client.get(reverse('reporte_ventas'))
 
@@ -1133,6 +1290,7 @@ class ReporteVentasTests(TestCase):
             username='estadisticas@example.com',
             email='estadisticas@example.com',
             password='UnaClave-larga-2026!',
+            is_staff=True,
         )
         self.client.force_login(usuario)
 
@@ -1149,6 +1307,13 @@ class ReporteVentasTests(TestCase):
         self.assertContains(response, f'href="{reverse("reporte_ventas")}"')
 
     def test_reporte_muestra_error_para_rango_invertido(self):
+        usuario = Usuario.objects.create_user(
+            username='estadisticas-admin@example.com',
+            email='estadisticas-admin@example.com',
+            password='UnaClave-larga-2026!',
+            is_staff=True,
+        )
+        self.client.force_login(usuario)
         response = self.client.get(reverse('reporte_ventas'), {
             'fecha_inicio': '2026-10-20',
             'fecha_fin': '2026-10-19',
@@ -1158,6 +1323,36 @@ class ReporteVentasTests(TestCase):
         self.assertContains(response, 'La fecha inicial no puede ser posterior a la fecha final.')
         self.assertEqual(response.context['data_miembros_json'], [])
         self.assertFalse(response.context['es_demostracion'])
+
+    def test_solo_administradores_acceden_a_estadisticas_y_ven_el_enlace(self):
+        visitante = self.client.get(reverse('reporte_ventas'))
+        self.assertRedirects(
+            visitante,
+            f'{reverse("login")}?next={reverse("reporte_ventas")}',
+        )
+
+        usuario = Usuario.objects.create_user(
+            username='cliente@example.com',
+            email='cliente@example.com',
+            password='UnaClave-larga-2026!',
+        )
+        self.client.force_login(usuario)
+        acceso_cliente = self.client.get(reverse('reporte_ventas'))
+        self.assertEqual(acceso_cliente.status_code, 403)
+        menu_cliente = self.client.get(reverse('home'))
+        self.assertNotContains(menu_cliente, reverse('reporte_ventas'))
+
+        administrador = Usuario.objects.create_user(
+            username='admin@example.com',
+            email='admin@example.com',
+            password='UnaClave-larga-2026!',
+            is_staff=True,
+        )
+        self.client.force_login(administrador)
+        acceso_admin = self.client.get(reverse('reporte_ventas'))
+        self.assertEqual(acceso_admin.status_code, 200)
+        menu_admin = self.client.get(reverse('home'))
+        self.assertContains(menu_admin, reverse('reporte_ventas'))
 
 
 class HomeCarouselesTests(TestCase):

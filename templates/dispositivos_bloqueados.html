@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}Cupo de dispositivos completo - RedFlix{% endblock %}
+
+{% block content %}
+<section class="container py-5 text-center" style="max-width: 680px;">
+    <div class="card bg-dark border-secondary p-4 p-md-5">
+        <i class="bi bi-display fs-1 text-warning mb-3" aria-hidden="true"></i>
+        <h1 class="h2 fw-bold">El cupo de dispositivos está lleno</h1>
+        <p class="text-white-50 mb-4">
+            Tu plan ya alcanzó el límite de dispositivos simultáneos. Se liberará
+            un lugar cuando otro dispositivo lleve más de un minuto sin actividad.
+        </p>
+        <div class="d-flex flex-wrap justify-content-center gap-2">
+            <a class="btn btn-netflix" href="{% url 'perfiles' %}">Intentar nuevamente</a>
+            <form method="post" action="{% url 'logout' %}">
+                {% csrf_token %}
+                <button class="btn btn-outline-light" type="submit">Cerrar sesión</button>
+            </form>
+        </div>
+    </div>
+</section>
+{% endblock %}

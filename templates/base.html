@@ -513,8 +513,9 @@
 <header>
     <nav class="navbar navbar-expand-lg navbar-dark navbar-netflix fixed-top px-4">
         <div class="container-fluid">
-            <a class="navbar-brand-logo me-4" href="{% if pagina_perfiles %}{% url 'perfiles' %}{% else %}{% url 'home' %}{% endif %}"><span class="navbar-brand-red">Red</span>Flix</a>
-            
+            <a class="navbar-brand-logo me-4" href="{% if pagina_bloqueo_dispositivos or pagina_perfiles %}{% url 'perfiles' %}{% else %}{% url 'home' %}{% endif %}"><span class="navbar-brand-red">Red</span>Flix</a>
+
+            {% if not pagina_bloqueo_dispositivos %}
             {% if not pagina_perfiles %}
                 <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent">
                     <span class="navbar-toggler-icon"></span>
@@ -592,10 +593,12 @@
                                     <li><a class="dropdown-item" href="{% url 'perfiles' %}">Cambiar Perfil</a></li>
                                     <li><a class="dropdown-item{% if pagina_cuenta %} active{% endif %}"
                                            href="{% url 'cuenta' %}">Cuenta</a></li>
-                                    <li><a class="dropdown-item{% if pagina_estadisticas %} active{% endif %}"
-                                           href="{% url 'reporte_ventas' %}">
-                                        <i class="bi bi-graph-up-arrow me-2" aria-hidden="true"></i>Estadísticas
-                                    </a></li>
+                                    {% if user.is_staff %}
+                                        <li><a class="dropdown-item{% if pagina_estadisticas %} active{% endif %}"
+                                               href="{% url 'reporte_ventas' %}">
+                                            <i class="bi bi-graph-up-arrow me-2" aria-hidden="true"></i>Estadísticas
+                                        </a></li>
+                                    {% endif %}
                                     <li><hr class="dropdown-divider"></li>
                                     <li>
                                         <form method="post" action="{% url 'logout' %}">
@@ -615,6 +618,7 @@
                     </div>
                 {% endif %}
             </div>
+            {% endif %}
         </div>
     </nav>
 </header>
@@ -693,6 +697,49 @@
     {% endif %}
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    {% if user.is_authenticated and not pagina_bloqueo_dispositivos %}
+    <form id="device-heartbeat-form" class="d-none">
+        {% csrf_token %}
+    </form>
+    <script>
+        (() => {
+            const csrfToken = document.querySelector(
+                '#device-heartbeat-form [name="csrfmiddlewaretoken"]',
+            )?.value;
+            if (!csrfToken) {
+                return;
+            }
+
+            const enviarActividad = async () => {
+                if (document.visibilityState === 'hidden') {
+                    return;
+                }
+                try {
+                    const response = await fetch(
+                        '{% url "heartbeat_dispositivo" %}',
+                        {
+                            method: 'POST',
+                            headers: {'X-CSRFToken': csrfToken},
+                            credentials: 'same-origin',
+                        },
+                    );
+                    if (response.redirected) {
+                        window.location.assign(response.url);
+                    }
+                } catch (error) {
+                    console.error('No se pudo actualizar la actividad del dispositivo.', error);
+                }
+            };
+
+            window.setInterval(enviarActividad, 25000);
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible') {
+                    enviarActividad();
+                }
+            });
+        })();
+    </script>
+    {% endif %}
     {% if user.is_authenticated and perfil_activo and not pagina_perfiles %}
     <script>
         const titleSearchForm = document.querySelector('[data-title-search-form]');
