@@ -1,0 +1,242 @@
+{% load static %}
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>RedFlix - Ver {{ nombre }}</title>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        body {
+            background: #141414;
+            color: white;
+            font-family: Arial, sans-serif;
+        }
+
+        .player {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            margin: 0;
+            background: black;
+            display: flex;
+            flex-direction: column;
+        }
+
+        video {
+            display: block;
+            width: 100%;
+            flex: 1;
+            min-height: 0;
+            max-height: none;
+            object-fit: contain;
+        }
+
+        .controls {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 15px;
+            background: #181818;
+        }
+
+        .controls button, .controls select {
+            background: #292929;
+            color: white;
+            border: none;
+            padding: 9px;
+            cursor: pointer;
+            border-radius: 3px;
+        }
+
+        .controls button:hover, .controls select:hover {
+            background: #444;
+        }
+
+        .controls option:disabled {
+            color: #777;
+        }
+
+        .timeline {
+            width: 100%;
+            accent-color: #e50914;
+        }
+
+        .time {
+            white-space: nowrap;
+            font-size: 13px;
+        }
+
+        .next {
+            margin-left: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="player">
+
+    <video id="video">
+        <source src="{{ VIDEO_URL }}" type="video/mp4">
+
+        {% for subtitulo in subtitulos %}
+        <track
+            kind="subtitles"
+            src="{{ subtitulo.archivoVTT.url }}"
+            srclang="{{ subtitulo.CODIGO_IDIOMA }}"
+            label="{{ subtitulo.NOMBRE_IDIOMA }}">
+        {% endfor %}
+    </video>
+
+    <input
+        type="range"
+        id="timeline"
+        class="timeline"
+        min="0"
+        value="0"
+        step="1">
+
+    <div class="controls">
+
+        <!-- Pausa -->
+        <button id="pause">⏸</button>
+
+        <!-- Volumen -->
+        <button id="mute">🔊</button>
+
+        <input
+            type="range"
+            id="volume"
+            min="0"
+            max="1"
+            step="0.05"
+            value="1">
+
+        <!-- Tiempo -->
+        <span class="time" id="time">00:00 / 00:00</span>
+
+        <!-- Subtítulos -->
+        <select id="subtitles">
+            <option value="-1">Subtítulos: Desactivados</option>
+            {% for subtitulo in subtitulos %}
+            <option value="{{ forloop.counter0 }}">
+                {{ subtitulo.NOMBRE_IDIOMA }}
+            </option>
+            {% endfor %}
+        </select>
+
+        <!-- Calidad -->
+        <select id="quality">
+            {% for calidad in calidades %}
+            <option
+                value="{{ calidad.VIDEO_URL }}"
+                {% if not calidad.DISPONIBLE %}disabled{% endif %}>
+                {{ calidad.NOMBRE }}
+                {% if not calidad.DISPONIBLE %} (Plan superior){% endif %}
+            </option>
+            {% endfor %}
+        </select>
+
+        <!-- Siguiente capítulo -->
+        <a class="next" href="{{ NEXT_CHAPTER_URL }}">
+            <button type="button">Siguiente capítulo ⏭</button>
+        </a>
+
+    </div>
+    </div>
+
+<script>
+    const video = document.getElementById("video");
+    const pause = document.getElementById("pause");
+    const mute = document.getElementById("mute");
+    const volume = document.getElementById("volume");
+    const timeline = document.getElementById("timeline");
+    const time = document.getElementById("time");
+    const subtitles = document.getElementById("subtitles");
+    const quality = document.getElementById("quality");
+
+    // Recuperar tiempo desde la URL: ?t=120
+    const params = new URLSearchParams(window.location.search);
+    const startTime = Number(params.get("t"));
+
+    video.addEventListener("loadedmetadata", () => {
+        if (Number.isFinite(startTime) && startTime > 0) {
+            video.currentTime = Math.min(startTime, video.duration);
+        }
+    });
+
+    // Pausa / reproducción
+    pause.addEventListener("click", () => {
+        if (video.paused) {
+            video.play();
+            pause.textContent = "⏸";
+        } else {
+            video.pause();
+            pause.textContent = "▶";
+        }
+    });
+
+    // Volumen
+    volume.addEventListener("input", () => {
+        video.volume = volume.value;
+        video.muted = false;
+    });
+
+    mute.addEventListener("click", () => {
+        video.muted = !video.muted;
+        mute.textContent = video.muted ? "🔇" : "🔊";
+    });
+
+    // Barra de tiempo
+    video.addEventListener("timeupdate", () => {
+        timeline.max = video.duration || 0;
+        timeline.value = video.currentTime;
+
+        const format = (seconds) => {
+            const min = Math.floor(seconds / 60);
+            const sec = Math.floor(seconds % 60);
+            return `${String(min).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+        };
+
+        time.textContent =
+            `${format(video.currentTime)} / ${format(video.duration || 0)}`;
+    });
+
+    timeline.addEventListener("input", () => {
+        video.currentTime = timeline.value;
+    });
+
+    // Subtítulos
+    subtitles.addEventListener("change", () => {
+        const tracks = video.textTracks;
+
+        for (let i = 0; i < tracks.length; i++) {
+            tracks[i].mode =
+                i == subtitles.value ? "showing" : "disabled";
+        }
+    });
+
+    // Cambio de calidad
+    quality.addEventListener("change", () => {
+        const currentTime = video.currentTime;
+        const wasPlaying = !video.paused;
+
+        video.src = quality.value;
+
+        video.addEventListener("loadedmetadata", function restore() {
+            video.currentTime = currentTime;
+
+            if (wasPlaying) video.play();
+
+            video.removeEventListener("loadedmetadata", restore);
+        });
+    });
+
+</script>
+
+</body>
+</html>

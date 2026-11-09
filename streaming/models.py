@@ -161,7 +161,7 @@ class Contenido(models.Model):
 class Subtitulo(models.Model):
     contenido = models.ForeignKey(Contenido, on_delete=models.CASCADE, related_name='subtitulos')
     idioma = models.ForeignKey(Idioma, on_delete=models.PROTECT, related_name='subtitulos')
-    archivo_vtt = models.BinaryField()
+    archivo_vtt = models.FileField()
 
     def __str__(self):
         return f'{self.contenido} - {self.idioma}'
@@ -181,7 +181,6 @@ class IdiomaContenido(models.Model):
 class CalidadIdiomaContenido(models.Model):
     idioma_contenido = models.ForeignKey(IdiomaContenido, on_delete=models.CASCADE, related_name='calidades')
     calidad = models.ForeignKey(Calidad, on_delete=models.PROTECT, related_name='calidad_idioma_contenidos')
-    archivo_legacy = models.BinaryField()
     archivo = models.FileField(
         upload_to='videos/',
         blank=True,
@@ -272,14 +271,6 @@ class Tarjeta(models.Model):
 
     def __str__(self):
         return f'{self.marca_tarjeta} **** {self.numero[-4:]}'
-    """
-    # Es muy posible que esto no se deberia guardar, en cuyo caso:
-    # ultimos 4 nums para reconocerla
-    numero = models.CharField(max_length=4)
-    marca_tarjeta = models.ForeignKey(MarcaTarjeta, on_delete=models.PROTECT, related_name='tarjetas')
-    metodo_pago = models.ForeignKey(MetodoPago, on_delete=models.PROTECT, related_name='tarjetas')
-    habilitado = models.BooleanField(default=True)
-    """
 
 
 class Plan(models.Model):
