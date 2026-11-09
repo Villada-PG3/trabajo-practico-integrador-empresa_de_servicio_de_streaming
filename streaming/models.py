@@ -323,7 +323,7 @@ class TipoPerfil(Model):
 class Perfil(Model):
     id = BigAutoField(primary_key=True)
     nombre = CharField(max_length=100)
-    imagen = ForeignKey(Imagen, on_delete=CASCADE)
+    imagen = models.ForeignKey(Imagen, on_delete=models.SET_NULL, null=True, blank=True)
     tipo_perfil = ForeignKey(TipoPerfil, on_delete=CASCADE)
     usuario = ForeignKey(settings.AUTH_USER_MODEL, on_delete=CASCADE)
     

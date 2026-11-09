@@ -1,59 +1,76 @@
 {% extends "base.html" %}
 
-{% block title %}Inicio - RedFlix{% endblock %}
+{% block title %}
+    {% if user.is_authenticated %}Inicio - RedFlix{% else %}RedFlix - Ver películas y series{% endif %}
+{% endblock %}
 
 {% block content %}
-<div class="position-relative text-center text-white py-5 d-flex align-items-center justify-content-center" 
-     style="min-height: 80vh; background: linear-gradient(rgba(0,0,0,0.75), rgba(0,0,0,0.75)), url('https://picsum.photos/1920/1080') center/cover no-repeat;">
-    
-    <div class="container my-5 px-4" style="max-width: 700px;">
-        <!-- Título principal -->
-        <h1 class="display-4 fw-bold mb-3">
-            Películas, series ilimitadas y mucho más
-        </h1>
-        
-        <!-- Subtítulo -->
-        <p class="fs-4 fw-normal mb-4">
-            Disfruta donde quieras. Cancela en cualquier momento.
-        </p>
+{% if user.is_authenticated %}
 
-        <p class="lead mb-4">
-            ¿Quieres ver algo ya? Ingresa tu email para crear una cuenta o reiniciar tu membresía.
-        </p>
 
-        <!-- Formulario básico para iniciar registro -->
-        <form action="#" method="GET" class="row g-2 justify-content-center">
-            <div class="col-12 col-md-8">
-                <input type="email" 
-                       name="email" 
-                       class="form-control form-control-lg bg-dark text-white border-secondary" 
-                       placeholder="Dirección de email" 
-                       required>
-            </div>
-            <div class="col-12 col-md-4">
-                <button type="submit" class="btn btn-netflix btn-lg w-100">
-                    Comenzar &gt;
-                </button>
-            </div>
-        </form>
-    </div>
-
-</div>
-
-<!-- Sección informativa simple -->
-<div class="border-top border-secondary border-opacity-25 py-5 bg-black">
-    <div class="container text-center text-md-start">
-        <div class="row align-items-center g-4">
-            <div class="col-md-6">
-                <h2 class="fw-bold fs-2 mb-3">Disfruta en tu TV</h2>
-                <p class="fs-5 text-secondary">
-                    Ve en smart TV, PlayStation, Xbox, Chromecast, Apple TV, reproductores de Blu-ray y más.
-                </p>
-            </div>
-            <div class="col-md-6 text-center">
-                <i class="bi bi-tv display-1 text-danger"></i>
+    {% if destacado %}
+    <!-- Hero Banner -->
+    <div class="hero-banner position-relative text-white d-flex align-items-center" 
+         style="height: 70vh; background: linear-gradient(180deg, rgba(20,20,20,0.3) 0%, rgba(20,20,20,1) 100%), url('https://picsum.photos/1920/1080') center/cover no-repeat; margin-top: -70px;">
+        <div class="container px-4">
+            <span class="badge bg-danger mb-2">DESTACADO</span>
+            <h1 class="display-3 fw-bold">{{ destacado.nombre|default:destacado.titulo }}</h1>
+            <p class="fs-5 text-light col-md-6">{{ destacado.descripcion|default:"Sin descripción disponible." }}</p>
+            <div class="d-flex gap-3 mt-3">
+                <a href="#" class="btn btn-light btn-lg fw-bold"><i class="bi bi-play-fill"></i> Reproducir</a>
+                <a href="#" class="btn btn-secondary btn-lg fw-bold"><i class="bi bi-info-circle"></i> Más información</a>
             </div>
         </div>
     </div>
-</div>
+    {% endif %}
+
+    <!-- Filas de Categorías -->
+    <div class="container-fluid px-4 mt-4">
+        {% for categoria in categorias %}
+        <div class="mb-4">
+            <h4 class="text-white fw-bold mb-3">{{ categoria.nombre }}</h4>
+            <div class="d-flex gap-3 overflow-x-auto pb-3">
+                <!-- Tarjetas de películas/series -->
+                {% for titulo in categoria.titulo_set.all %}
+                <div class="card bg-dark text-white border-0 flex-shrink-0" style="width: 200px;">
+                    <img src="https://picsum.photos/300/450?random={{ titulo.id }}" class="card-img-top rounded" alt="{{ titulo.nombre }}">
+                    <div class="card-body p-2">
+                        <h6 class="card-title text-truncate m-0">{{ titulo.nombre }}</h6>
+                    </div>
+                </div>
+                {% empty %}
+                <p class="text-secondary small">No hay contenidos en esta categoría.</p>
+                {% endfor %}
+            </div>
+        </div>
+        {% empty %}
+        <div class="text-center py-5 text-secondary">
+            <h3>No hay categorías cargadas en el catálogo.</h3>
+        </div>
+        {% endfor %}
+    </div>
+
+{% else %}
+
+
+    <div class="position-relative text-center text-white py-5 d-flex align-items-center justify-content-center" 
+         style="min-height: 85vh; background: linear-gradient(rgba(0,0,0,0.75), rgba(0,0,0,0.75)), url('https://picsum.photos/1920/1080') center/cover no-repeat; margin-top: -70px;">
+        
+        <div class="container my-5 px-4" style="max-width: 750px;">
+            <h1 class="display-3 fw-bold mb-3">Películas, series ilimitadas y mucho más</h1>
+            <p class="fs-4 fw-normal mb-4">Disfruta donde quieras. Cancela en cualquier momento.</p>
+            <p class="lead mb-4">¿Quieres ver algo ya? Ingresa tu email para crear una cuenta.</p>
+
+            <form action="{% url 'registro' %}" method="GET" class="row g-2 justify-content-center">
+                <div class="col-12 col-md-8">
+                    <input type="email" name="email" class="form-control form-control-lg bg-dark text-white border-secondary" placeholder="Dirección de email" required>
+                </div>
+                <div class="col-12 col-md-4">
+                    <button type="submit" class="btn btn-danger btn-lg w-100 fw-bold">Comenzar &gt;</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+{% endif %}
 {% endblock %}

@@ -1,19 +1,27 @@
-from django.shortcuts import render, redirect
+from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.contrib import messages
 import json
 from django.db.models import Count, F
 from django.utils.dateparse import parse_date
-from .models import Idioma, Precio, Suscripcion, Plan, Tarjeta, MarcaTarjeta, MetodoPago, Cobro, EstadoCobro, Perfil, TipoPerfil, Imagen
+from .models import Idioma, Precio, Suscripcion, Plan, Tarjeta, MarcaTarjeta, MetodoPago, Cobro, EstadoCobro, Perfil, TipoPerfil, Categoria, Imagen, Titulo
 from django.contrib.auth.models import User
 from datetime import date
 from django.utils import timezone
+from django.contrib.auth.decorators import login_required
 
 User = get_user_model()
 
 def home(request):
-    """Vista para la landing page / página de inicio pública"""
-    return render(request, 'home.html')
+    destacado = Titulo.objects.last()
+    
+    categorias = Categoria.objects.all()
+
+    context = {
+        'destacado': destacado,
+        'categorias': categorias,
+    }
+    return render(request, 'home.html', context)
 
 def login_view(request):
     if request.method == 'POST':
@@ -43,10 +51,6 @@ def reporte_ventas_view(request):
 
     fecha_inicio = parse_date(fecha_inicio_str) if fecha_inicio_str else None
     fecha_fin = parse_date(fecha_fin_str) if fecha_fin_str else None
-
-    # ------------------------------------------------------------------
-    # 1. Cantidad de miembros por plan en el período
-    # ------------------------------------------------------------------
     suscripciones_qs = Suscripcion.objects.all()
     if fecha_inicio:
         suscripciones_qs = suscripciones_qs.filter(fecha_inscripcion__gte=fecha_inicio)
@@ -216,29 +220,75 @@ def pago_view(request):
         'marcas': marcas
     })
 
-def seleccionar_perfil_view(request):
-    """Pantalla para elegir quién está viendo (Perfiles del usuario)"""
-    perfiles = request.user.perfil_set.all() if hasattr(request.user, 'perfil_set') else []
-    return render(request, 'seleccionar_perfil.html', {'perfiles': perfiles})
+# streaming/views.py
 
-
+@login_required
 def seleccionar_perfil_view(request):
-    """Muestra los perfiles creados del usuario autenticado"""
+    """Muestra los perfiles del usuario y valida si puede agregar más."""
     perfiles = Perfil.objects.filter(usuario=request.user)
-    return render(request, 'seleccionar_perfil.html', {'perfiles': perfiles})
+    suscripcion_activa = Suscripcion.objects.filter(usuario=request.user, habilitado=True).first()
+    
+    # Límite de perfiles según el plan (por defecto 1 si no hay suscripción)
+    limite_perfiles = suscripcion_activa.plan.cantidad_pantallas_simultaneas if suscripcion_activa else 1
+    puede_agregar = perfiles.count() < limite_perfiles
 
+    context = {
+        'perfiles': perfiles,
+        'puede_agregar': puede_agregar,
+        'limite_perfiles': limite_perfiles,
+        'perfiles_actuales': perfiles.count(),
+    }
+    return render(request, 'seleccionar_perfil.html', context)
+
+
+
+@login_required
 def crear_perfil_view(request):
-    """Crea un nuevo perfil para el usuario autenticado"""
+    """Crea un nuevo perfil simplificado sin depender del modelo Titulo/Imagen."""
     if request.method == 'POST':
         nombre = request.POST.get('nombre')
-        tipo_default = TipoPerfil.objects.first()
-        imagen_default = Imagen.objects.first()
         
+        # 1. Consultar la suscripción activa y su límite de perfiles
+        suscripcion_activa = Suscripcion.objects.filter(usuario=request.user, habilitado=True).first()
+        limite_perfiles = suscripcion_activa.plan.cantidad_pantallas_simultaneas if (suscripcion_activa and hasattr(suscripcion_activa.plan, 'cantidad_pantallas_simultaneas')) else 1
+        perfiles_actuales = Perfil.objects.filter(usuario=request.user).count()
+
+        # 2. Validar límite del plan
+        if perfiles_actuales >= limite_perfiles:
+            messages.error(
+                request, 
+                f'Has alcanzado el límite de {limite_perfiles} perfil(es) permitidos por tu plan. Mejora tu plan para agregar más.'
+            )
+            return redirect('seleccionar_perfil')
+
+        # 3. Obtener o crear TipoPerfil (con edad_max requerida)
+        tipo_default, _ = TipoPerfil.objects.get_or_create(
+            nombre='Estándar',
+            defaults={'edad_max': 99}
+        )
+
+        # 4. Crear el perfil directamente (sin pasar imagen para evitar conflictos)
         Perfil.objects.create(
             nombre=nombre,
             usuario=request.user,
             tipo_perfil=tipo_default,
-            imagen=imagen_default
+            imagen=None
         )
         messages.success(request, f'Perfil "{nombre}" creado con éxito.')
+        
     return redirect('seleccionar_perfil')
+
+
+@login_required
+def detalle_contenido(request, pk):
+    """Muestra la información detallada de una película/serie y su reproductor."""
+    titulo = get_object_or_404(Titulo, pk=pk)
+    
+    # Obtener títulos relacionados (de la misma sección o categoría si aplica)
+    relacionados = Titulo.objects.exclude(pk=pk)[:6]
+
+    context = {
+        'titulo': titulo,
+        'relacionados': relacionados,
+    }
+    return render(request, 'detalle_contenido.html', context)
