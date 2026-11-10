@@ -1,5 +1,5 @@
 erDiagram
-    Pais{
+    Pais {
         int id PK
         str nombre
     }
@@ -11,20 +11,19 @@ erDiagram
         int cantidad_pantallas_simultaneas
     }
 
-    Calidad{
+    Calidad {
         int id PK
         str nombre
         str descripcion
     }
 
-    %% Soluciona la n:m entre plan y calidad
-    Plan_calidad{
+    Plan_calidad {
         int id PK
         int id_Plan FK
         int id_Calidad FK
     }
 
-    Precio  {
+    Precio {
         int id PK
         float precio
         date fecha_inicio
@@ -32,9 +31,7 @@ erDiagram
         int id_Plan FK
     }
 
-
-    %% Si es serie, pelicula, miniserie, etc.
-    Tipo_titulo{
+    Tipo_titulo {
         int id PK
         str nombre
         str descripcion
@@ -48,9 +45,9 @@ erDiagram
         int id_Pais FK
         date fecha_estreno
         date fecha_baja
+        int edad_minima
     }
 
-    %% La persona que trabaja en el rubro de la produccion
     Elenco {
         int id PK
         int id_Pais FK 
@@ -60,64 +57,58 @@ erDiagram
         str descripcion
     }
 
-    %% El rol que cumple un elenco en un titulo (Productor, Director, Actor, etc.)
     Rol {
         int id PK
         str nombre
         str descripcion
     }
 
-    %% soluciona la n:m entre rol y elenco (un elenco puede tener varios roles)
-    %% dentro de un mismo titulo y a un mismo rol lo pueden cumplir varios elencos
     Rol_elenco {
         int id PK
         int id_Rol FK
         int id_Elenco FK
     }
 
-    %% relaciona el detalle anterior con el titulo
     Titulo_rol_elenco {
         int id PK
         int id_Rol_elenco FK
         int id_Titulo FK
     }
 
-    %% categorias del titulo como comedia, drama, suspenso, accion, etc.
     Categoria {
         int id PK
         str nombre
         str descripcion
     }
 
-    %% relaciona varios titulos con varias categorias
     Titulo_categoria {
         int id PK
         int id_Titulo FK
         int id_Categoria FK
     }
 
-    Idioma{
+    Idioma {
         int id PK
         str nombre
         str descripcion
     }
 
-    %% La informacion del titulo traducida
-    Idioma_titulo{
+    Idioma_titulo {
         int id PK
         str nombre
         str descripcion
+        str imagen
         int id_Idioma FK
         int id_Titulo FK
     }
 
-    %% Cada tramo audiovisual del titulo
-    Contenido{
+    Contenido {
         int id PK
         str nombre
         str descripcion
         int seccion
-        int orden 
+        int orden
+        int duracion_segundos
         int id_Titulo FK
     }
 
@@ -125,47 +116,37 @@ erDiagram
         int id PK
         int id_Contenido FK
         int id_Idioma FK
-        blob archivoVTT
-        %% .vtt es el formato de subtitulos mas comunmente usado para este tipo
-        %% de aplicaciones y se puede vincular con html5
+        str archivo_vtt
     }
 
-    %% la imagen del perfil relacionadas con un titulo
     Imagen {
         int id PK
-        int id_Titulo FK
-        blob imagen
-        str personaje
-
+        str nombre
+        str imagen
     }
 
-    %% Para las restricciones de edad
     Tipo_perfil {
         int id PK
         str nombre
-        int edad_maxima
+        int edad_max
     }
 
-    %% Cada perfil del usuario
     Perfil {
         int id PK
         str nombre
         int id_Imagen FK
         int id_Tipo_perfil FK
         int id_Usuario FK 
-        bool habilitado
+        bool activo
     }
 
-    %% Para que el usuario pueda elegir de una lista de opciones cuanto
-    %% le gusto el titulo
     Calificacion {
         int id PK
         str nombre
         float porcentaje_gusto
+        decimal estrellas
     }
 
-    %% Para relacionar los titulos que vio el perfil y cuanto le gustaron
-    %% para las recomendaciones
     Perfil_titulo {
         int id PK
         int id_Perfil FK
@@ -173,15 +154,13 @@ erDiagram
         int id_Calificacion FK
     }
 
-    Porver{
+    Porver {
         int id PK
         int id_Perfil_titulo FK
         date fecha_agregado
         date fecha_eliminado
     }
 
-    %% Almacena cuanto vio el perfil un determinado contenido
-    %% y soluciona una n:m
     Perfil_contenido {
         int id PK
         int id_Perfil FK
@@ -190,38 +169,35 @@ erDiagram
         datetime ultima_visualizacion
     }
 
-    %% Soluciona la n:m entre contenido e idioma (un contenido esta en varios idiomas)
-    %% y un idioma tiene varios contenidos
-    Idioma_contenido{
+    Idioma_contenido {
         int id PK
+        str nombre
+        str descripcion
+        str imagen
         int id_Idioma FK
         int id_Contenido FK
     }
 
-    %% Relaciona el idioma_contenido y la calidad 
     Calidad_idioma_contenido {
         int id PK
         int id_Idioma_contenido FK
         int id_Calidad FK
-        blob archivo
+        str archivo
     }
 
-    %% Visa, Mastercard, etc
-    Marca_tarjeta{
+    Marca_tarjeta {
         int id PK
         str nombre
         int numero_asignado
         str descripcion
     }
 
-    %% Credito/Debito
     Metodo_pago {
         int id PK
         str nombre
         str descripcion
     }
 
-    %% Almacenamos la tarjeta porque se requieren cobros regulares
     Tarjeta {
         int id PK
         str numero
@@ -234,109 +210,118 @@ erDiagram
 
     Usuario {
         int id PK
-        str nombre
-        str apellido
+        str username
+        str first_name
+        str last_name
         str email
-        str telefono 
-        %%OPC Contiene caracteristica
-        str clave 
-        %%cifrado
+        str telefono
+        str password
         int id_Pais FK
         int id_Idioma FK
-        int id_Tarjeta FK
-    
     }
 
-    %% Se genera para cada inicio de sesion en cada dispositivo
-    Registro{
+    Registro {
         int id PK
         int id_Usuario FK
-        %%cada inicio de sesion genera un token unico que indica donde se ha iniciado sesion, este mismo se almacena en las cookies del navegador para luego poder acceder nuevamente sin necesidad de loguearse
-        str token_dispositivo 
-        %%indica si el token es valido aún
-        str sistema_operativo
-        datetime ultima_conexion
-        bool estado_sesion
+        str token_disp
+        str os
+        date ultima_conexion_fecha
+        time ultima_conexion_hora
+        bool estado
     }
 
-    %% relaciona usuario con plan y da un historial para el usuario
     Suscripcion {
         int id PK
         int id_Usuario FK
         int id_Plan FK
+        int id_Tarjeta FK
         date fecha_inscripcion
         date fecha_vigencia
         date fecha_cancelacion
         bool habilitado
     }
 
-    %% Para tipificar el estado del cobro (puede ser pendiente, fallido, realizado)
-    Estado_cobro{
+    Cambio_plan {
+        int id PK
+        int id_Suscripcion FK
+        int id_Plan FK
+        date fecha_aplicacion
+        str nombre_titular
+        str tarjeta_ultimos4
+        str estado
+        datetime creado_en
+    }
+
+    Estado_cobro {
         int id PK
         str nombre
         str descripcion
     }
-    
-    %% Funciona como comprobante y historial de pagos
-    Cobro{
+
+    Cobro {
         int id PK
         int num_factura
         int id_Suscripcion FK
-        date fecha_cobro
         int id_Estado_cobro FK
         int id_Tarjeta FK 
+        int id_Cambio_plan FK
+        date fecha_cobro
+        datetime fecha_hora_creacion
         str numero_autorizacion
-        %%id_tarjeta se saca de suscrpcion a la hora del cobro, y luego se almacena por historial
         float monto
     }
 
-    Rol ||--o{ Rol_elenco: ""
-    Elenco ||--o{ Rol_elenco: ""
-    Rol_elenco ||--o{ Titulo_rol_elenco: ""
-    Pais ||--o{ Titulo: ""
-    Pais ||--o{ Usuario: ""
-    Elenco }o--|| Pais: ""
-    Perfil ||--o{ Perfil_contenido:""
-    Perfil }o--|| Usuario:""
-    Titulo_rol_elenco }o--|| Titulo: ""
-    Titulo_categoria }o--|| Titulo: "" 
-    Categoria ||--o{ Titulo_categoria:""
+    %% Relaciones
+    Rol ||--o{ Rol_elenco : ""
+    Elenco ||--o{ Rol_elenco : ""
+    Rol_elenco ||--o{ Titulo_rol_elenco : ""
+    Pais ||--o{ Titulo : ""
+    Pais ||--o{ Usuario : ""
+    Elenco }o--|| Pais : ""
+    Perfil ||--o{ Perfil_contenido : ""
+    Perfil }o--|| Usuario : ""
+    Titulo_rol_elenco }o--|| Titulo : ""
+    Titulo_categoria }o--|| Titulo : "" 
+    Categoria ||--o{ Titulo_categoria : ""
 
-    Titulo ||--o{ Idioma_titulo: ""
-    Titulo ||--o{ Contenido: ""
-    Titulo ||--o{ Imagen: ""
-    Titulo ||--o{ Perfil_titulo: ""
-    Contenido ||--o{ Idioma_contenido:""
-    Subtitulo }o--|| Idioma:""
-    Subtitulo }o--|| Contenido:""
+    Titulo ||--o{ Idioma_titulo : ""
+    Titulo ||--o{ Contenido : ""
+    Titulo ||--o{ Perfil_titulo : ""
+    Contenido ||--o{ Idioma_contenido : ""
+    Subtitulo }o--|| Idioma : ""
+    Subtitulo }o--|| Contenido : ""
 
-    Tipo_titulo ||--o{ Titulo: ""
-    Imagen ||--o{ Perfil:""
+    Tipo_titulo ||--o{ Titulo : ""
+    Imagen ||--o{ Perfil : ""
     
-    Perfil_titulo }o--|| Calificacion:""
-    Perfil_titulo ||--o{ Porver:""
+    Perfil_titulo }o--o| Calificacion : ""
+    Perfil_titulo ||--o{ Porver : ""
 
-    Contenido ||--o{ Perfil_contenido:""
-    Tipo_perfil ||--o{ Perfil:""
-    Perfil ||--o{ Perfil_titulo:""
-    Idioma_contenido ||--o{ Calidad_idioma_contenido:""
+    Contenido ||--o{ Perfil_contenido : ""
+    Tipo_perfil ||--o{ Perfil : ""
+    Perfil ||--o{ Perfil_titulo : ""
+    Idioma_contenido ||--o{ Calidad_idioma_contenido : ""
 
-    Registro }o--|| Usuario:""
-    Usuario ||--o{ Suscripcion:""
-    Tarjeta ||--o{ Cobro:""
+    Registro }o--|| Usuario : ""
+    Usuario ||--o{ Suscripcion : ""
+    Tarjeta ||--o{ Cobro : ""
+    Tarjeta ||--o{ Suscripcion : ""
 
-    Calidad_idioma_contenido }o--|| Calidad: ""
-    Calidad ||--o{ Plan_calidad: ""
-    Plan_calidad }o--||Plan: ""
-    Plan ||--o{ Precio: ""
-    Plan ||--o{ Suscripcion: ""
-    Cobro }o--|| Estado_cobro:""
-    Suscripcion ||--o{ Cobro:""
-    Usuario }o--|o Tarjeta:""
-    Tarjeta }o--|| Marca_tarjeta:""
-    Tarjeta }o--|| Metodo_pago:""
-
-
-    Idioma ||--o{ Idioma_contenido:""
-    Idioma_titulo }o--|| Idioma:""
+    Calidad_idioma_contenido }o--|| Calidad : ""
+    Calidad ||--o{ Plan_calidad : ""
+    Plan_calidad }o--|| Plan : ""
+    Plan ||--o{ Precio : ""
+    Plan ||--o{ Suscripcion : ""
+    Plan ||--o{ Cambio_plan : ""
     
+    Estado_cobro ||--o{ Cobro : ""
+    Suscripcion ||--o{ Cobro : ""
+    Suscripcion ||--o{ Cambio_plan : ""
+    Cambio_plan ||--o{ Cobro : ""
+
+    Tarjeta }o--|| Marca_tarjeta : ""
+    Tarjeta }o--|| Metodo_pago : ""
+
+    Idioma ||--o{ Idioma_contenido : ""
+    Idioma ||--o{ Usuario : ""
+    Idioma_titulo }o--|| Idioma : ""
