@@ -59,18 +59,20 @@ def fecha_inicio_suscripcion(usuario, hoy=None):
 
 
 def normalizar_numero_tarjeta(numero):
-    numero = numero.strip()
+    if not numero:
+        return ''
+    numero = str(numero).strip()
     if not re.fullmatch(r'[0-9][0-9 -]*[0-9]', numero):
         return ''
     return numero.replace(' ', '').replace('-', '')
 
 
-def numero_tarjeta_valido(numero):
-    if not numero.isascii() or not numero.isdigit() or not 12 <= len(numero) <= 19:
+def numero_tarjeta_valido(numero_targeta):
+    if not numero_targeta.isascii() or not numero_targeta.isdigit() or not 12 <= len(numero_targeta) <= 19:
         return False
 
     suma = 0
-    for posicion, digito in enumerate(reversed(numero)):
+    for posicion, digito in enumerate(reversed(numero_targeta)):
         valor = int(digito)
         if posicion % 2:
             valor *= 2

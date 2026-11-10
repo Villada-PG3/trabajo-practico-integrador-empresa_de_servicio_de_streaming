@@ -342,7 +342,7 @@ class TarjetaDemoPlanForm(forms.Form):
 
     def clean_numero_tarjeta(self):
         numero = normalizar_numero_tarjeta(
-            self.cleaned_data['numero_tarjeta'],
+            self.cleaned_data.get('numero_tarjeta', ''),
         )
         if not numero_tarjeta_valido(numero):
             raise forms.ValidationError(
