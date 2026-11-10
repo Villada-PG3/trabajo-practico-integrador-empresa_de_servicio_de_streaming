@@ -31,6 +31,7 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
+    'jazzmin',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -39,7 +40,6 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'streaming',
     'phonenumber_field',
-    'jazzmin',
 ]
 
 MIDDLEWARE = [
@@ -121,6 +121,8 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
@@ -155,17 +157,19 @@ JAZZMIN_SETTINGS = {
     "default_icon_parents": "fas fa-chevron-circle-right",
     "default_icon_children": "fas fa-circle",
     "changeform_format": "horizontal_tabs",
+    "custom_css": "style.css",
 }
+
 
 JAZZMIN_UI_TWEAKS = {
     "navbar_small_text": False,
     "footer_small_text": False,
     "body_small_text": False,
     "brand_small_text": False,
-    "brand_colour": "navbar-danger",
+    "brand_colour": "navbar-dark",
     "accent": "accent-danger",
-    "navbar": "navbar-dark navbar-danger",
-    "no_navbar_border": False,
+    "navbar": "navbar-dark bg-dark",
+    "no_navbar_border": True,
     "navbar_fixed": True,
     "layout_boxed": False,
     "footer_fixed": False,
@@ -181,10 +185,10 @@ JAZZMIN_UI_TWEAKS = {
     "dark_mode_theme": "darkly",
     "button_classes": {
         "primary": "btn-danger",
-        "secondary": "btn-secondary",
-        "info": "btn-info",
+        "secondary": "btn-outline-light",
+        "info": "btn-outline-danger",
         "warning": "btn-warning",
         "danger": "btn-danger",
-        "success": "btn-success",
+        "success": "btn-danger",
     },
 }

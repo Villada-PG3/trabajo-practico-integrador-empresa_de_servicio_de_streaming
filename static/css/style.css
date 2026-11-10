@@ -297,3 +297,27 @@ footer a:hover {
     font-size: 25px;
     font-weight: bold;
 }
+/* Estilos para adaptar el Admin a la estética RedFlix */
+.content-wrapper, .main-sidebar, body.login-page {
+    background-color: var(--netflix-black) !important;
+}
+
+.card {
+    background-color: var(--netflix-dark-gray) !important;
+    border: 1px solid var(--netflix-light-gray) !important;
+}
+
+.btn-primary, .btn-success, .btn-info {
+    background-color: var(--netflix-red) !important;
+    border-color: var(--netflix-red) !important;
+    color: #ffffff !important;
+}
+
+.btn-primary:hover, .btn-success:hover, .btn-info:hover {
+    background-color: #c11119 !important;
+    border-color: #c11119 !important;
+}
+
+.sidebar-dark-danger .nav-sidebar>.nav-item>.nav-link.active {
+    background-color: var(--netflix-red) !important;
+}
