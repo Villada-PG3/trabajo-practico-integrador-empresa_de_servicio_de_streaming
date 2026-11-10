@@ -137,7 +137,7 @@ usuarios = [Usuario.objects.create_user(username=u, email=f"{u}@mail.com", passw
     ("john", "+12025550143", "Estados Unidos", "Inglés"), ("carla", "+34600000001", "España", "Español")]]
 tp = {n: TipoPerfil.objects.create(nombre=n, edad_max=e) for n, e in [("Infantil", 12), ("Adolescente", 16), ("Adulto", 100)]}
 # Imagen exige un titulo, asi que cada avatar se asocia a uno (carpeta media/perfil/<titulo>/)
-avatares = [Imagen.objects.create(nombre=f"Avatar {i}", titulo=titulos[i % len(titulos)],
+avatares = [Imagen.objects.create(nombre=f"Avatar {i}",
                                   imagen=png(f"Avatar {i}", COLORES[i % len(COLORES)], f"avatar_{i}.png", (200, 200)))
             for i in range(1, 9)]
 perfiles = []
@@ -187,6 +187,7 @@ for i, (s, t) in enumerate(zip(suscripciones, tarjetas)):
         # juan cambió de tarjeta: los cobros viejos quedan con la tarjeta anterior (historial)
         tarjeta_cobro = tarjeta_vieja if (i == 0 and meses > 0) else t
         Cobro.objects.create(
+            num_factura=n,  # <--- AGREGAR ESTA LÍNEA AQUÍ
             suscripcion=s, fecha_cobro=hoy - timedelta(days=30 * meses),
             estado_cobro=estados["Rechazado"] if fallo else estados["Pagado"], tarjeta=tarjeta_cobro,
             numero_autorizacion=None if fallo else f"AUTH{n}", monto=monto)
