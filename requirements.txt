@@ -4,3 +4,4 @@ django-phonenumber-field==8.5.0
 phonenumbers==9.0.37
 pillow==13.0.0
 sqlparse==0.6.1
+django-jazzmin==3.0.5

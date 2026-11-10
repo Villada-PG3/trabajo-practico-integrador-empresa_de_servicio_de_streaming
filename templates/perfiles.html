@@ -65,13 +65,23 @@
 <section class="container text-center py-5">
     <p class="text-white-50 mb-2">{{ user.email|default:user.username }}</p>
     <h1 class="display-5 fw-semibold mb-5">¿Quién está viendo?</h1>
-    <div class="d-flex justify-content-center mb-4">
+    
+    <!-- BARRA DE ACCIONES SUPERIOR -->
+    <div class="d-flex justify-content-center align-items-center gap-3 mb-5">
         {% if editar_perfiles %}
             <a href="{% url 'perfiles' %}" class="btn btn-outline-light">Listo</a>
         {% else %}
             <a href="{% url 'perfiles' %}?editar=1" class="btn btn-outline-light">Editar perfiles</a>
         {% endif %}
+
+        {% if user.is_staff or user.is_superuser %}
+            <a href="{% url 'admin:index' %}" class="btn btn-danger d-inline-flex align-items-center gap-2">
+                <i class="bi bi-shield-lock-fill" aria-hidden="true"></i> Panel Admin
+            </a>
+        {% endif %}
     </div>
+
+    <!-- GRILLA DE PERFILES -->
     <div class="d-flex flex-wrap justify-content-center align-items-start gap-4">
         {% for perfil in perfiles %}
             {% if editar_perfiles %}

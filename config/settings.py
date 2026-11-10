@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'streaming',
     'phonenumber_field',
+    'jazzmin',
 ]
 
 MIDDLEWARE = [
@@ -122,3 +123,68 @@ USE_TZ = True
 STATIC_URL = 'static/'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+# Jazzmin Admin UI Settings
+JAZZMIN_SETTINGS = {
+    "site_title": "RedFlix Admin",
+    "site_header": "RedFlix",
+    "site_brand": "RedFlix Admin",
+    "site_logo_classes": "img-circle",
+    "welcome_sign": "Bienvenido al Panel de Administración de RedFlix",
+    "search_model": ["streaming.Titulo", "streaming.Usuario"],
+    "user_avatar": None,
+    "topmenu_links": [
+        {"name": "Inicio RedFlix", "url": "home", "permissions": ["auth.user_site"]},
+        {"app": "streaming"},
+    ],
+    "show_sidebar": True,
+    "navigation_expanded": True,
+    "order_with_respect_to": ["streaming", "auth"],
+    "icons": {
+        "auth.user": "fas fa-user",
+        "auth.Group": "fas fa-users",
+        "streaming.Titulo": "fas fa-film",
+        "streaming.Contenido": "fas fa-play-circle",
+        "streaming.Perfil": "fas fa-user-circle",
+        "streaming.Plan": "fas fa-credit-card",
+        "streaming.Suscripcion": "fas fa-ticket-alt",
+        "streaming.Cobro": "fas fa-file-invoice-dollar",
+        "streaming.Categoria": "fas fa-list",
+        "streaming.Pais": "fas fa-globe",
+    },
+    "default_icon_parents": "fas fa-chevron-circle-right",
+    "default_icon_children": "fas fa-circle",
+    "changeform_format": "horizontal_tabs",
+}
+
+JAZZMIN_UI_TWEAKS = {
+    "navbar_small_text": False,
+    "footer_small_text": False,
+    "body_small_text": False,
+    "brand_small_text": False,
+    "brand_colour": "navbar-danger",
+    "accent": "accent-danger",
+    "navbar": "navbar-dark navbar-danger",
+    "no_navbar_border": False,
+    "navbar_fixed": True,
+    "layout_boxed": False,
+    "footer_fixed": False,
+    "sidebar_fixed": True,
+    "sidebar": "sidebar-dark-danger",
+    "sidebar_nav_small_text": False,
+    "sidebar_disable_expand": False,
+    "sidebar_nav_child_indent": False,
+    "sidebar_nav_compact_style": False,
+    "sidebar_nav_legacy_style": False,
+    "sidebar_nav_flat_style": False,
+    "theme": "darkly",
+    "dark_mode_theme": "darkly",
+    "button_classes": {
+        "primary": "btn-danger",
+        "secondary": "btn-secondary",
+        "info": "btn-info",
+        "warning": "btn-warning",
+        "danger": "btn-danger",
+        "success": "btn-success",
+    },
+}
