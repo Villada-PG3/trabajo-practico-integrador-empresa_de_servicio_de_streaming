@@ -192,4 +192,23 @@ for i, (s, t) in enumerate(zip(suscripciones, tarjetas)):
             estado_cobro=estados["Rechazado"] if fallo else estados["Pagado"], tarjeta=tarjeta_cobro,
             numero_autorizacion=None if fallo else f"AUTH{n}", monto=monto)
 
-print("Mock cargado: usuarios juan, maria, john y carla (contraseña: test1234)")
+# Crear usuario administrador automático
+admin_user = Usuario.objects.create_superuser(
+    username="admin",
+    email="admin@stream.com",
+    password="admin123",
+    first_name="Administrador",
+    pais=pa["Argentina"],
+    idioma=idi["Español"]
+)
+
+# Perfil obligatorio para el admin en la plataforma
+Perfil.objects.create(
+    nombre="Admin Main",
+    imagen=avatares[0],
+    tipo_perfil=tp["Adulto"],
+    usuario=admin_user
+)
+
+print("Mock cargado: usuarios juan, maria, john y carla (contraseña: test1234)" \
+"Usuario admin: admin, mail: admin@stream.com, contraseña: admin123 ")
